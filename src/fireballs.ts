@@ -1,30 +1,112 @@
 import * as THREE from 'three';
 import { Enemy } from './enemy';
+import { LevelSystem } from './level-system';
 
 export class FireballSystem {
   scene: THREE.Scene;
   fireballs: Fireball[] = [];
-  cooldown: number = 380; // ms between shots
+  cooldown: number = 380; // ms between shots - keep original cooldown
   lastFireTime: number = 0;
+  levelSystem: LevelSystem;
+  
+  // Cache objects for better performance
+  private geometry: THREE.SphereGeometry;
+  private material: THREE.MeshBasicMaterial;
+  private glowGeometry: THREE.SphereGeometry;
+  private glowMaterial: THREE.MeshBasicMaterial;
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+    // This will be set in the main.ts file
+    this.levelSystem = null as unknown as LevelSystem;
+    
+    // Pre-create geometries and materials for reuse
+    this.geometry = new THREE.SphereGeometry(1, 8, 8); // Will scale as needed
+    this.material = new THREE.MeshBasicMaterial({ color: 0xff4500 });
+    this.glowGeometry = new THREE.SphereGeometry(1, 8, 8); // Will scale as needed
+    this.glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff8c00,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.BackSide
+    });
   }
   
-  fire(position: THREE.Vector3, direction: THREE.Vector3, damage: number = 10): boolean {
-    // Check cooldown
+  // Set the level system - call this from main.ts
+  setLevelSystem(levelSystem: LevelSystem) {
+    this.levelSystem = levelSystem;
+  }
+  
+  fire(position: THREE.Vector3, direction: THREE.Vector3, damage: number): boolean {
+    // Check cooldown - restore original cooldown check
     const now = Date.now();
     if (now - this.lastFireTime < this.cooldown) {
       return false; // Still in cooldown
     }
     
-    // Create new fireball
-    const fireball = new Fireball(this.scene, position, direction, damage);
+    // Get level stats for fireball properties
+    const stats = this.levelSystem.getStats();
+    
+    // Use original size for level 1, otherwise use scaled size
+    const fireballRadius = stats.fireballCount === 1 ? 0.7 : stats.fireballRadius;
+    
+    // Create the main fireball
+    const fireball = new Fireball(
+      this.scene, 
+      position, 
+      direction, 
+      damage, 
+      fireballRadius,
+      this.geometry,
+      this.material,
+      this.glowGeometry,
+      this.glowMaterial
+    );
     this.fireballs.push(fireball);
+    
+    // Update last fire time
     this.lastFireTime = now;
     
-    // Play fire sound
-    this.playFireSound();
+    // If we're at level 7 or higher, shoot two fireballs side by side
+    if (stats.fireballCount > 1) {
+      // Create offset vectors perpendicular to the direction
+      const offsetAmount = 0.7; // Distance between fireballs
+      
+      // Create a vector perpendicular to the direction (and up vector)
+      const upVector = new THREE.Vector3(0, 1, 0);
+      const perpendicular = new THREE.Vector3().crossVectors(direction, upVector).normalize().multiplyScalar(offsetAmount);
+      
+      // Create positions offset to the left and right
+      const leftPosition = position.clone().add(perpendicular);
+      const rightPosition = position.clone().sub(perpendicular);
+      
+      // Fire the two offset fireballs
+      const leftFireball = new Fireball(
+        this.scene, 
+        leftPosition, 
+        direction, 
+        damage, 
+        fireballRadius,
+        this.geometry,
+        this.material,
+        this.glowGeometry,
+        this.glowMaterial
+      );
+      const rightFireball = new Fireball(
+        this.scene, 
+        rightPosition, 
+        direction, 
+        damage, 
+        fireballRadius,
+        this.geometry,
+        this.material,
+        this.glowGeometry,
+        this.glowMaterial
+      );
+      
+      this.fireballs.push(leftFireball);
+      this.fireballs.push(rightFireball);
+    }
     
     return true;
   }
@@ -32,57 +114,80 @@ export class FireballSystem {
   update() {
     // Update all active fireballs
     for (let i = this.fireballs.length - 1; i >= 0; i--) {
-      const fireball = this.fireballs[i];
-      fireball.update();
+      this.fireballs[i].update();
       
-      // Remove dead fireballs
-      if (!fireball.active) {
-        fireball.destroy();
+      // Remove expired fireballs
+      if (this.fireballs[i].isDead) {
+        this.fireballs[i].cleanup();
         this.fireballs.splice(i, 1);
       }
     }
   }
   
-  checkCollisions(objects: THREE.Object3D[], enemies?: Enemy[]) {
-    // Track if any collision happened and XP gained
-    let totalXpGained = 0;
+  checkCollisions(objects: THREE.Object3D[], enemies: Enemy[]): number {
+    let totalXP = 0;
     
+    // Check each fireball
     for (let i = this.fireballs.length - 1; i >= 0; i--) {
       const fireball = this.fireballs[i];
-      if (!fireball.active) continue;
+      if (fireball.isDead) continue;
       
-      // Check collisions with environment
-      let collided = false;
+      // Check collision with environment objects
       for (const object of objects) {
-        if (fireball.checkCollision(object)) {
-          // Handle collision with environment object
-          collided = true;
+        // Skip objects without geometry
+        if (!(object instanceof THREE.Mesh)) continue;
+        
+        // Check if fireball is close to the object
+        const boundingBox = new THREE.Box3().setFromObject(object);
+        const objectCenter = new THREE.Vector3();
+        boundingBox.getCenter(objectCenter);
+        
+        // Get half the size of the object to estimate its radius
+        const objectSize = new THREE.Vector3();
+        boundingBox.getSize(objectSize);
+        const objectRadius = Math.max(objectSize.x, objectSize.z) * 0.5;
+        
+        // Check distance between fireball and object centers
+        const distance = fireball.position.distanceTo(objectCenter);
+        
+        // If collision detected
+        if (distance < (fireball.radius + objectRadius)) {
+          fireball.handleCollision();
           break;
         }
       }
       
-      // Check collisions with enemies if not already collided
-      if (!collided && enemies) {
-        for (const enemy of enemies) {
-          if (!enemy.alive) continue;
+      // Skip if fireball is already dead from environment collision
+      if (fireball.isDead) continue;
+      
+      // Check collision with enemies
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        
+        // Get enemy position
+        const enemyPosition = enemy.body.position;
+        
+        // Check distance
+        const distance = fireball.position.distanceTo(enemyPosition);
+        
+        // If collision detected
+        if (distance < (fireball.radius + 1)) { // Assuming enemy radius is 1
+          // Handle direct hit
+          enemy.takeDamage(fireball.damage);
+          const killed = !enemy.alive;
+          fireball.handleCollision();
           
-          if (fireball.checkEnemyCollision(enemy)) {
-            // Enemy hit - apply damage
-            enemy.takeDamage(fireball.damage);
-            
-            // Add XP if enemy died
-            if (!enemy.alive) {
-              totalXpGained += 50; // XP reward for killing enemy
-            }
-            
-            collided = true;
-            break;
+          // Add XP if enemy was killed
+          if (killed) {
+            totalXP += 50;
           }
+          
+          break;
         }
       }
     }
     
-    return totalXpGained;
+    return totalXP;
   }
   
   playFireSound() {
@@ -94,312 +199,137 @@ export class FireballSystem {
 class Fireball {
   scene: THREE.Scene;
   mesh: THREE.Mesh;
-  direction: THREE.Vector3;
-  speed: number = 0.6; // Doubled speed for better gameplay
-  lifetime: number = 4500; // Doubled lifetime in ms
-  createTime: number;
-  active: boolean = true;
+  light: THREE.PointLight;
+  velocity: THREE.Vector3;
+  position: THREE.Vector3;
+  radius: number;
+  lifespan: number = 1500; // Milliseconds
   damage: number;
-  particles: THREE.Points[] = [];
-  particleEmitRate: number = 100; // ms
-  lastParticleTime: number = 0;
-  maxDistance: number = 200; // Maximum travel distance
-  startPosition: THREE.Vector3;
+  isDead: boolean = false;
+  createTime: number;
+  trailParticles: THREE.Object3D[] = [];
+  trailTimer: number = 0;
   
-  constructor(scene: THREE.Scene, position: THREE.Vector3, direction: THREE.Vector3, damage: number) {
+  constructor(
+    scene: THREE.Scene, 
+    position: THREE.Vector3, 
+    direction: THREE.Vector3, 
+    damage: number, 
+    radius: number = 0.2,
+    geometry: THREE.SphereGeometry,
+    material: THREE.MeshBasicMaterial,
+    glowGeometry: THREE.SphereGeometry,
+    glowMaterial: THREE.MeshBasicMaterial
+  ) {
     this.scene = scene;
-    
-    // Make sure the direction has minimal downward component
-    direction = direction.clone();
-    if (direction.y < 0) {
-      direction.y *= 0.2; // Reduce downward movement by 80%
-    }
-    this.direction = direction.normalize();
-    
+    this.position = position.clone();
+    this.radius = radius;
     this.damage = damage;
     this.createTime = Date.now();
-    this.startPosition = position.clone();
     
-    // Create fireball mesh
-    const geometry = new THREE.SphereGeometry(0.7, 10, 10);
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xff4500,
-      emissive: 0xff2000,
-      emissiveIntensity: 1.5,
-      transparent: true,
-      opacity: 0.9
-    });
-    
-    this.mesh = new THREE.Mesh(geometry, material);
+    // Create fireball mesh - reuse geometry and clone material
+    this.mesh = new THREE.Mesh(geometry, material.clone());
     this.mesh.position.copy(position);
+    this.mesh.scale.set(radius, radius, radius);
     
-    // Add point light to make it glow
-    const light = new THREE.PointLight(0xff4500, 2, 8); // Increased light intensity and range
-    this.mesh.add(light);
+    // Add glow effect - reuse geometry and clone material
+    const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial.clone());
+    glowMesh.scale.set(1.5, 1.5, 1.5);
+    this.mesh.add(glowMesh);
     
+    // Add light - reduced intensity for performance
+    this.light = new THREE.PointLight(0xff6600, 0.8, radius * 8);
+    this.light.position.set(0, 0, 0);
+    this.mesh.add(this.light);
+    
+    // Add to scene
     scene.add(this.mesh);
     
-    // Initial particles
-    this.emitParticles();
+    // Set velocity (direction and speed)
+    this.velocity = direction.normalize().multiplyScalar(0.4);
   }
   
   update() {
-    // Move fireball
-    // Apply very slight upward force to counter gravity
-    const moveVector = this.direction.clone().multiplyScalar(this.speed);
-    moveVector.y += 0.0005; // Reduced from 0.002 for less swerving
-    this.mesh.position.add(moveVector);
+    // Check if fireball should expire
+    if (Date.now() - this.createTime > this.lifespan) {
+      this.isDead = true;
+      return;
+    }
     
-    // Rotate for effect
+    // Update position
+    this.position.add(this.velocity);
+    this.mesh.position.copy(this.position);
+    
+    // Animate fireball (rotation and pulse) - simplified for performance
     this.mesh.rotation.x += 0.05;
-    this.mesh.rotation.y += 0.07;
+    this.mesh.rotation.y += 0.05;
     
-    // Add pulsing effect to the fireball
-    const pulseFactor = Math.sin(Date.now() * 0.01) * 0.1 + 1.0;
-    this.mesh.scale.set(pulseFactor, pulseFactor, pulseFactor);
-    
-    // Also pulse the light intensity
-    const light = this.mesh.children[0] as THREE.PointLight;
-    if (light && light.isPointLight) {
-      light.intensity = 1 + Math.sin(Date.now() * 0.015) * 0.3;
-    }
-    
-    // Emit particles trail
+    // Only create trail particles occasionally - reduced for performance
     const now = Date.now();
-    if (now - this.lastParticleTime > this.particleEmitRate) {
-      this.emitParticles();
-      this.lastParticleTime = now;
-    }
-    
-    // Update particles
-    this.updateParticles();
-    
-    // Check lifetime
-    if (Date.now() - this.createTime > this.lifetime) {
-      this.active = false;
-    }
-    
-    // Check distance traveled
-    const distanceTraveled = this.mesh.position.distanceTo(this.startPosition);
-    if (distanceTraveled > this.maxDistance) {
-      this.active = false;
-    }
-    
-    // Check if out of bounds (simple world boundary) - expanded boundaries
-    if (Math.abs(this.mesh.position.x) > 200 ||
-        Math.abs(this.mesh.position.y) > 200 ||
-        Math.abs(this.mesh.position.z) > 200) {
-      this.active = false;
+    if (now - this.trailTimer > 100) { // Reduced trail frequency
+      this.addTrailParticle();
+      this.trailTimer = now;
     }
   }
   
-  emitParticles() {
-    const particleCount = 20; // Increased from 15
-    const particleGeometry = new THREE.BufferGeometry();
-    const particlePositions = new Float32Array(particleCount * 3);
-    const particleSizes = new Float32Array(particleCount);
+  handleCollision() {
+    this.isDead = true;
     
-    for (let i = 0; i < particleCount; i++) {
-      // Random position within a small radius of the fireball
-      const offset = new THREE.Vector3(
-        (Math.random() - 0.5) * 1.2, // Increased from 0.8
-        (Math.random() - 0.5) * 1.2, // Increased from 0.8
-        (Math.random() - 0.5) * 1.2  // Increased from 0.8
-      );
-      
-      const pos = this.mesh.position.clone().add(offset);
-      
-      particlePositions[i * 3] = pos.x;
-      particlePositions[i * 3 + 1] = pos.y;
-      particlePositions[i * 3 + 2] = pos.z;
-      
-      // Random sizes
-      particleSizes[i] = Math.random() * 0.3 + 0.15; // Increased from 0.2 + 0.1
-    }
+    // Simple collision effect
+    const collisionLight = new THREE.PointLight(0xff4500, 2, this.radius * 5);
+    collisionLight.position.copy(this.position);
+    this.scene.add(collisionLight);
     
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-    particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
-    
-    // Create material with fire colors
-    const particleMaterial = new THREE.PointsMaterial({
-      color: new THREE.Color(Math.random() > 0.5 ? 0xff4500 : 0xff8c00),
-      size: 0.3, // Increased from 0.2
-      transparent: true,
-      opacity: 0.8,
-      sizeAttenuation: true
-    });
-    
-    const particles = new THREE.Points(particleGeometry, particleMaterial);
-    this.scene.add(particles);
-    this.particles.push(particles);
-    
-    // Remove particles after animation
+    // Remove after a short delay
     setTimeout(() => {
-      this.scene.remove(particles);
-      this.particles = this.particles.filter(p => p !== particles);
-      particleGeometry.dispose();
-      particleMaterial.dispose();
-    }, 500);
+      this.scene.remove(collisionLight);
+    }, 100);
   }
   
-  updateParticles() {
-    // Animate existing particles
-    for (const particles of this.particles) {
-      const positions = particles.geometry.attributes.position.array;
-      
-      // Move particles in the opposite direction of travel
-      for (let i = 0; i < positions.length / 3; i++) {
-        positions[i * 3] -= this.direction.x * 0.04;
-        positions[i * 3 + 1] -= this.direction.y * 0.04;
-        positions[i * 3 + 2] -= this.direction.z * 0.04;
-      }
-      
-      particles.geometry.attributes.position.needsUpdate = true;
-      
-      // Fade out
-      const material = particles.material as THREE.PointsMaterial;
-      material.opacity -= 0.02;
-    }
-  }
-  
-  checkCollision(object: THREE.Object3D): boolean {
-    if (!this.active) return false;
-    
-    // Get bounding box of object
-    const boundingBox = new THREE.Box3().setFromObject(object);
-    
-    // Check if fireball is inside bounding box
-    if (boundingBox.containsPoint(this.mesh.position)) {
-      this.explode();
-      return true;
-    }
-    
-    return false;
-  }
-  
-  checkEnemyCollision(enemy: Enemy): boolean {
-    if (!this.active || !enemy.alive) return false;
-    
-    // Check distance to enemy's center
-    const distance = this.mesh.position.distanceTo(enemy.body.position);
-    
-    // If within collision radius, it's a hit
-    // Using a larger collision radius for better gameplay feel
-    if (distance < 3.5) { // Increased from 2.5 to 3.5 for even easier hits
-      this.explode();
-      return true;
-    }
-    
-    return false;
-  }
-  
-  explode() {
-    // Create explosion effect
-    this.createExplosion();
-    
-    // Mark as inactive
-    this.active = false;
-  }
-  
-  createExplosion() {
-    const explosionParticleCount = 60; // Increased from 45
-    const particleGeometry = new THREE.BufferGeometry();
-    const particlePositions = new Float32Array(explosionParticleCount * 3);
-    const particleSizes = new Float32Array(explosionParticleCount);
-    
-    for (let i = 0; i < explosionParticleCount; i++) {
-      // Random position within explosion radius
-      const offset = new THREE.Vector3(
-        (Math.random() - 0.5) * 4, // Increased from 3
-        (Math.random() - 0.5) * 4, // Increased from 3
-        (Math.random() - 0.5) * 4  // Increased from 3
-      ).normalize().multiplyScalar(Math.random() * 1.5); // Increased from 1.0
-      
-      const pos = this.mesh.position.clone().add(offset);
-      
-      particlePositions[i * 3] = pos.x;
-      particlePositions[i * 3 + 1] = pos.y;
-      particlePositions[i * 3 + 2] = pos.z;
-      
-      // Random sizes for explosion particles
-      particleSizes[i] = Math.random() * 0.6 + 0.3; // Increased from 0.4 + 0.2
-    }
-    
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-    particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
-    
-    // Create material with fire colors
-    const particleMaterial = new THREE.PointsMaterial({
-      color: 0xff4500,
-      size: 0.6, // Increased from 0.4
-      transparent: true,
-      opacity: 0.9,
-      sizeAttenuation: true
-    });
-    
-    const explosionParticles = new THREE.Points(particleGeometry, particleMaterial);
-    this.scene.add(explosionParticles);
-    
-    // Add a point light for the explosion
-    const explosionLight = new THREE.PointLight(0xff4500, 4, 15); // Increased intensity and range
-    explosionLight.position.copy(this.mesh.position);
-    this.scene.add(explosionLight);
-    
-    // Animate explosion particles
-    const animateExplosion = () => {
-      const positions = explosionParticles.geometry.attributes.position.array;
-      
-      // Expand particles outward
-      for (let i = 0; i < positions.length / 3; i++) {
-        const x = positions[i * 3] - this.mesh.position.x;
-        const y = positions[i * 3 + 1] - this.mesh.position.y;
-        const z = positions[i * 3 + 2] - this.mesh.position.z;
-        
-        const direction = new THREE.Vector3(x, y, z).normalize();
-        
-        positions[i * 3] += direction.x * 0.1;
-        positions[i * 3 + 1] += direction.y * 0.1;
-        positions[i * 3 + 2] += direction.z * 0.1;
-      }
-      
-      explosionParticles.geometry.attributes.position.needsUpdate = true;
-      
-      // Fade out explosion
-      const material = explosionParticles.material as THREE.PointsMaterial;
-      material.opacity -= 0.02;
-      
-      // Fade out light
-      explosionLight.intensity -= 0.05;
-      
-      if (material.opacity > 0) {
-        requestAnimationFrame(animateExplosion);
-      } else {
-        // Remove explosion particles and light
-        this.scene.remove(explosionParticles);
-        this.scene.remove(explosionLight);
-        particleGeometry.dispose();
-        particleMaterial.dispose();
-      }
-    };
-    
-    // Start explosion animation
-    animateExplosion();
-  }
-  
-  destroy() {
+  cleanup() {
     // Remove from scene
     this.scene.remove(this.mesh);
     
-    // Clean up particles
-    for (const particles of this.particles) {
-      this.scene.remove(particles);
-      particles.geometry.dispose();
-      (particles.material as THREE.Material).dispose();
+    // Clean up trail particles
+    for (const particle of this.trailParticles) {
+      if (particle.parent) {
+        this.scene.remove(particle);
+      }
     }
-    this.particles = [];
+    this.trailParticles = [];
+  }
+  
+  addTrailParticle() {
+    // Create a simplified trail particle
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.7
+    });
     
-    // Clean up mesh
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    // Reuse geometry and create fewer particles
+    const geometry = new THREE.SphereGeometry(this.radius * 0.4, 4, 4);
+    const particle = new THREE.Mesh(geometry, material);
+    particle.position.copy(this.position);
+    
+    this.scene.add(particle);
+    this.trailParticles.push(particle);
+    
+    // Fade out and remove - simplified
+    let opacity = 0.7;
+    
+    const fadeInterval = setInterval(() => {
+      opacity -= 0.14; // Faster fade out
+      
+      if (opacity <= 0) {
+        clearInterval(fadeInterval);
+        this.scene.remove(particle);
+        this.trailParticles = this.trailParticles.filter(p => p !== particle);
+        geometry.dispose();
+        material.dispose();
+      } else {
+        material.opacity = opacity;
+      }
+    }, 50);
   }
 } 

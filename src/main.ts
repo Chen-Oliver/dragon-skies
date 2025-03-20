@@ -4,6 +4,7 @@ import { Environment } from './environment'
 import { ExperienceOrbs } from './experience-orbs'
 import { FireballSystem } from './fireballs'
 import { EnemySystem } from './enemy'
+import { LevelSystem, LEVEL_THRESHOLDS } from './level-system'
 
 // Scene setup
 const scene = new THREE.Scene()
@@ -19,117 +20,18 @@ document.body.appendChild(renderer.domElement)
 // Initialize the game environment
 const environment = new Environment(scene);
 
-// Initialize the fireball system
+// Initialize the level system
+const levelSystem = new LevelSystem(scene);
+
+// Initialize the fireball system and connect it to the level system
 const fireballSystem = new FireballSystem(scene);
+fireballSystem.setLevelSystem(levelSystem);
 
 // Initialize the enemy system
 const enemySystem = new EnemySystem(scene);
 
-// Add experience counter
-let totalExperience = 0;
-// Add a variable to track the notification timeout
-let notificationTimeout: number | undefined;
-
 // Initialize experience orbs system
 const experienceOrbs = new ExperienceOrbs(scene, 150); // Create 150 orbs
-
-// Create a simple HUD for experience display
-const createHUD = () => {
-  // Main HUD container for persistent XP counter
-  const hudContainer = document.createElement('div');
-  hudContainer.style.position = 'absolute';
-  hudContainer.style.top = '20px';
-  hudContainer.style.left = '20px';
-  hudContainer.style.color = 'white';
-  hudContainer.style.fontFamily = 'Arial, sans-serif';
-  hudContainer.style.fontSize = '18px';
-  hudContainer.style.fontWeight = 'bold';
-  hudContainer.style.textShadow = '1px 1px 3px rgba(0,0,0,0.8)';
-  hudContainer.style.userSelect = 'none';
-  hudContainer.id = 'experience-counter';
-  document.body.appendChild(hudContainer);
-  
-  // Minimal notification element (initially hidden)
-  const notification = document.createElement('span');
-  notification.style.marginLeft = '10px';
-  notification.style.color = '#00ffff';
-  notification.style.opacity = '0';
-  notification.style.transition = 'opacity 0.3s ease-out';
-  notification.id = 'xp-notification';
-  hudContainer.appendChild(notification);
-  
-  // Add fireball cooldown indicator
-  const fireballIndicator = document.createElement('div');
-  fireballIndicator.style.position = 'absolute';
-  fireballIndicator.style.bottom = '30px';
-  fireballIndicator.style.left = '50%';
-  fireballIndicator.style.transform = 'translateX(-50%)';
-  fireballIndicator.style.width = '120px';
-  fireballIndicator.style.height = '10px';
-  fireballIndicator.style.background = 'rgba(0, 0, 0, 0.5)';
-  fireballIndicator.style.borderRadius = '5px';
-  fireballIndicator.style.overflow = 'hidden';
-  fireballIndicator.id = 'fireball-cooldown';
-  
-  const cooldownFill = document.createElement('div');
-  cooldownFill.style.height = '100%';
-  cooldownFill.style.width = '100%';
-  cooldownFill.style.background = 'linear-gradient(to right, #ff4500, #ff8c00)';
-  cooldownFill.style.transition = 'width 0.1s linear';
-  cooldownFill.id = 'cooldown-fill';
-  
-  fireballIndicator.appendChild(cooldownFill);
-  document.body.appendChild(fireballIndicator);
-  
-  updateExperienceDisplay();
-};
-
-// Update the experience display
-const updateExperienceDisplay = () => {
-  const hudContainer = document.getElementById('experience-counter');
-  if (hudContainer) {
-    // Update only the main counter text, not the entire container
-    const notificationEl = document.getElementById('xp-notification');
-    if (notificationEl) {
-      // Preserve the notification element
-      hudContainer.innerHTML = `XP: ${totalExperience}`;
-      hudContainer.appendChild(notificationEl);
-    } else {
-      hudContainer.innerHTML = `XP: ${totalExperience}`;
-    }
-  }
-};
-
-// Show experience gain notification
-const showExpGainNotification = (amount: number) => {
-  const notification = document.getElementById('xp-notification');
-  if (notification) {
-    // Update notification text and show
-    notification.textContent = `+${amount}`;
-    notification.style.opacity = '1';
-    
-    // Hide after a short time
-    clearTimeout(notificationTimeout);
-    notificationTimeout = setTimeout(() => {
-      notification.style.opacity = '0';
-    }, 800);
-  }
-};
-
-// Update the fireball cooldown indicator
-const updateFireballCooldown = () => {
-  const now = Date.now();
-  const timeSinceFire = now - fireballSystem.lastFireTime;
-  const cooldownPercent = Math.min(100, (timeSinceFire / fireballSystem.cooldown) * 100);
-  
-  const cooldownFill = document.getElementById('cooldown-fill');
-  if (cooldownFill) {
-    cooldownFill.style.width = `${cooldownPercent}%`;
-  }
-};
-
-// Create the HUD
-createHUD();
 
 // Create a collision feedback system
 class CollisionFeedback {
@@ -301,28 +203,31 @@ class Dragon {
   accelerationRate: number;
   decelerationRate: number;
   
+  // Add health tracking properties
+  lastDamageTime: number = 0;
+  
   constructor(size = 1) {
     this.body = new THREE.Group();
     this.size = size;
-    this.speed = 0.015; // Reduced for smoother control
-    this.maxSpeed = 0.12; // Slightly reduced max speed
-    this.forwardSpeed = 0.03; // Reduced for more controllable flight
+    this.speed = 0.015;
+    this.maxSpeed = 0.12;
+    this.forwardSpeed = 0.03;
     this.velocity = new THREE.Vector3(0, 0, 0);
     this.targetVelocity = new THREE.Vector3(0, 0, 0);
-    this.smoothingFactor = 0.08; // Controls how quickly the dragon responds to inputs
-    this.gravityForce = 0.003; // Reduced gravity for gentler descent
-    this.collisionRadius = 0.7 * size; // Reduced collision radius for tighter boundaries
-    this.worldBoundary = 95; // Slightly smaller than terrain size (200/2 = 100) to stay within bounds
+    this.smoothingFactor = 0.08;
+    this.gravityForce = 0.003;
+    this.collisionRadius = 0.7 * size;
+    this.worldBoundary = 95;
     
     this.lastCollisionTime = 0;
-    this.collisionCooldown = 500; // ms
+    this.collisionCooldown = 500;
     
     // Initialize acceleration properties
-    this.accelerationFactor = 1.0; // Multiplier for speed
-    this.currentAcceleration = 0; // Current acceleration amount
-    this.maxAcceleration = 0.6; // Maximum acceleration (60% speed boost)
-    this.accelerationRate = 0.03; // How quickly acceleration builds
-    this.decelerationRate = 0.06; // How quickly acceleration fades
+    this.accelerationFactor = 1.0;
+    this.currentAcceleration = 0;
+    this.maxAcceleration = 0.6;
+    this.accelerationRate = 0.03;
+    this.decelerationRate = 0.06;
     
     // Dragon body parts
     this.createBody();
@@ -1049,7 +954,7 @@ class Dragon {
     });
   }
   
-  // Add the shootFireball method
+  // Modify the shootFireball method to use the level system for damage
   shootFireball() {
     // Get position - from the dragon's mouth
     const fireballOffset = new THREE.Vector3(0, 0.1, 0.8).applyQuaternion(this.body.quaternion);
@@ -1065,13 +970,12 @@ class Dragon {
       cameraForward.normalize();
     }
     
-    // Calculate damage based on dragon's level (10 + 1 per level)
-    const damage = 10; // Base damage - we'll update this when adding the leveling system
+    // Get level stats for damage
+    const stats = levelSystem.getStats();
     
-    // Fire!
-    const fireSuccess = fireballSystem.fire(fireballPosition, cameraForward, damage);
+    // Fire fireball with damage from level system
+    const fireSuccess = fireballSystem.fire(fireballPosition, cameraForward, stats.damage);
     
-    // Visual feedback when firing
     if (fireSuccess) {
       // Add a slight backward force when shooting
       this.velocity.sub(cameraForward.clone().multiplyScalar(0.03));
@@ -1088,6 +992,9 @@ class Dragon {
       setTimeout(() => {
         this.body.remove(flashLight);
       }, 100);
+      
+      // Add camera shake
+      collisionFeedback.startCameraShake(0.03, 100);
     }
     
     return fireSuccess;
@@ -1096,6 +1003,9 @@ class Dragon {
 
 // Create player dragon
 const dragon = new Dragon(1);
+
+// Add a flag to track player death state
+let isPlayerDead = false;
 
 // Controls state
 const keys = {
@@ -1108,6 +1018,9 @@ const keys = {
 
 // Setup controls
 window.addEventListener('keydown', (e) => {
+  // Don't process any inputs while player is dead
+  if (isPlayerDead) return;
+  
   switch (e.key.toLowerCase()) {
     case 'w': keys.w = true; break;
     case 'a': keys.a = true; break;
@@ -1117,6 +1030,24 @@ window.addEventListener('keydown', (e) => {
       keys.space = true; 
       if (dragon) {
         dragon.shootFireball();
+      }
+      break;
+    case 'k':
+      // Cheat code to kill player
+      if (dragon) {
+        handlePlayerDeath();
+      }
+      break;
+    case 'l':
+      // Cheat code to level up
+      if (levelSystem.getLevel() < 10) {
+        // Add enough XP to level up
+        const currentLevel = levelSystem.getLevel();
+        const currentXP = levelSystem.getExperience();
+        const nextLevelXP = LEVEL_THRESHOLDS[currentLevel];
+        const xpNeeded = nextLevelXP - currentXP + 1;
+        
+        levelSystem.addExperience(xpNeeded);
       }
       break;
   }
@@ -1170,12 +1101,119 @@ const followCamera = () => {
   camera.lookAt(lookAtPos);
 }
 
+// Update enemy damage to player
+function updateEnemyAttacks() {
+  if (!dragon) return;
+  
+  // Check for enemy collisions with player
+  for (let i = 0; i < enemySystem.enemies.length; i++) {
+    const enemy = enemySystem.enemies[i];
+    if (!enemy.body) continue;
+    
+    // Check if enemy is close enough to damage player
+    const distance = enemy.body.position.distanceTo(dragon.body.position);
+    
+    // Use the original collision detection radius regardless of dragon's visual size
+    const effectiveCollisionRadius = 0.7; // Base collision size
+    const combinedRadius = effectiveCollisionRadius + 1; // Enemy radius is approximately 1
+    
+    if (distance < combinedRadius) {
+      // Apply damage to player
+      const now = Date.now();
+      // Only take damage every 1 second
+      if (now - dragon.lastDamageTime > 1000) {
+        const damageTaken = 10; // Base damage from enemy
+        const playerDied = levelSystem.takeDamage(damageTaken);
+        
+        // Visual and audio feedback
+        collisionFeedback.startCameraShake(0.15, 300);
+        collisionFeedback.createCollisionParticles(dragon.body.position, 0xff0000);
+        
+        // Store last damage time
+        dragon.lastDamageTime = now;
+        
+        // Handle player death
+        if (playerDied) {
+          handlePlayerDeath();
+        }
+      }
+    }
+  }
+}
+
+// Handle player death
+function handlePlayerDeath() {
+  // Set player as dead
+  isPlayerDead = true;
+  
+  // Clear all key states to prevent movement
+  keys.w = false;
+  keys.a = false;
+  keys.s = false;
+  keys.d = false;
+  keys.space = false;
+  
+  // Create death effect
+  const deathExplosion = new THREE.PointLight(0xff0000, 5, 20);
+  deathExplosion.position.copy(dragon.body.position);
+  scene.add(deathExplosion);
+  
+  // Add particles
+  for (let i = 0; i < 20; i++) {
+    collisionFeedback.createCollisionParticles(dragon.body.position, 0xff0000);
+  }
+  
+  // Strong camera shake
+  collisionFeedback.startCameraShake(0.3, 1000);
+  
+  // Display death message
+  const deathMessage = document.createElement('div');
+  deathMessage.style.position = 'absolute';
+  deathMessage.style.top = '50%';
+  deathMessage.style.left = '50%';
+  deathMessage.style.transform = 'translate(-50%, -50%)';
+  deathMessage.style.color = '#ff0000';
+  deathMessage.style.fontSize = '48px';
+  deathMessage.style.fontWeight = 'bold';
+  deathMessage.style.textShadow = '0 0 10px #000';
+  deathMessage.style.zIndex = '1000';
+  deathMessage.textContent = 'YOU DIED';
+  document.body.appendChild(deathMessage);
+  
+  // Hide dragon temporarily
+  dragon.body.visible = false;
+  
+  // Reset player after a delay
+  setTimeout(() => {
+    // Reset level system
+    levelSystem.reset();
+    
+    // Reset dragon position
+    dragon.body.position.set(0, 30, 0);
+    dragon.velocity.set(0, 0, 0);
+    dragon.body.rotation.set(0, 0, 0);
+    dragon.body.visible = true;
+    
+    // Remove death message
+    document.body.removeChild(deathMessage);
+    
+    // Remove death light
+    scene.remove(deathExplosion);
+    
+    // Clear nearby obstacles
+    dragon.clearOrbsNearStartPosition();
+    
+    // Allow player to shoot fireballs again
+    isPlayerDead = false;
+  }, 3000);
+}
+
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
   
   // Update dragon physics and animations
-  if (dragon) {
+  if (dragon && !isPlayerDead) {
     dragon.update();
     
     // Update boundary visualization based on dragon position
@@ -1194,13 +1232,11 @@ function animate() {
   // Update fireballs
   fireballSystem.update();
   
-  // Update enemies
-  if (dragon) {
+  // Update enemies and check for attacks
+  if (dragon && !isPlayerDead) {
     enemySystem.update(dragon.body.position);
+    updateEnemyAttacks();
   }
-  
-  // Update fireball cooldown indicator
-  updateFireballCooldown();
   
   // Check for dragon collision with orbs
   if (dragon) {
@@ -1210,15 +1246,9 @@ function animate() {
     if (collectedCount > 0) {
       // Add exactly 10 XP per orb
       const expGained = collectedCount * 10;
-      totalExperience += expGained;
       
-      // Update the display
-      updateExperienceDisplay();
-      
-      // Show notification for total XP gained this frame
-      showExpGainNotification(expGained);
-      
-      console.log(`Collected ${collectedCount} orbs! +${expGained} XP (Total: ${totalExperience})`);
+      // Add experience to level system
+      levelSystem.addExperience(expGained);
     }
   }
   
@@ -1243,10 +1273,7 @@ function animate() {
   
   // Add XP from defeated enemies
   if (xpFromEnemies > 0) {
-    totalExperience += xpFromEnemies;
-    updateExperienceDisplay();
-    showExpGainNotification(xpFromEnemies);
-    console.log(`Enemy defeated! +${xpFromEnemies} XP (Total: ${totalExperience})`);
+    levelSystem.addExperience(xpFromEnemies);
   }
   
   renderer.render(scene, camera);
