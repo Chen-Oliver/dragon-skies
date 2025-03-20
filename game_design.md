@@ -114,7 +114,7 @@
 
 - **Engine:** Three.js
 - **Assets:**
-  - **Dragons:** 3D model chibi.
+  - **Dragons:** Scalable 3D model with growth states or animations.
   - **Environment:** Modular medieval assets (castles, houses, trees).
   - **Effects:** Particle systems for fireballs (fire trail) and orbs (glow).
 - **Requirements:** Optimized for web performance, targeting 60 FPS on mid-range hardware.
@@ -150,6 +150,7 @@
 ## 5. Art and Animation
 
 - **Dragons:**
+  - Base model with scalable size or distinct models per level range (e.g., baby, juvenile, adult).
   - Animations: Flying (wing flaps), fireball shot (mouth opens), damage taken (flinch), death (falling spiral).
 - **Environment:**
   - Static 3D models for castles, houses, etc., with medieval textures (stone, wood).

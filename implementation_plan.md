@@ -16,6 +16,7 @@
 ## Phase 2: Dragon Character (Week 2)
 1. Dragon Model
    - Import/load basic dragon 3D model
+   - Set up model scaling system
    - Implement basic animations (idle, flying)
 
 2. Dragon Controls
@@ -54,6 +55,7 @@
 1. Leveling
    - Implement XP collection
    - Create leveling system
+   - Add size scaling per level
    - Set up health/damage scaling
 
 2. UI Elements
