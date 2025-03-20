@@ -2,6 +2,8 @@ import './style.css'
 import * as THREE from 'three'
 import { Environment } from './environment'
 import { ExperienceOrbs } from './experience-orbs'
+import { FireballSystem } from './fireballs'
+import { EnemySystem } from './enemy'
 
 // Scene setup
 const scene = new THREE.Scene()
@@ -16,6 +18,12 @@ document.body.appendChild(renderer.domElement)
 
 // Initialize the game environment
 const environment = new Environment(scene);
+
+// Initialize the fireball system
+const fireballSystem = new FireballSystem(scene);
+
+// Initialize the enemy system
+const enemySystem = new EnemySystem(scene);
 
 // Add experience counter
 let totalExperience = 0;
@@ -50,6 +58,29 @@ const createHUD = () => {
   notification.id = 'xp-notification';
   hudContainer.appendChild(notification);
   
+  // Add fireball cooldown indicator
+  const fireballIndicator = document.createElement('div');
+  fireballIndicator.style.position = 'absolute';
+  fireballIndicator.style.bottom = '30px';
+  fireballIndicator.style.left = '50%';
+  fireballIndicator.style.transform = 'translateX(-50%)';
+  fireballIndicator.style.width = '120px';
+  fireballIndicator.style.height = '10px';
+  fireballIndicator.style.background = 'rgba(0, 0, 0, 0.5)';
+  fireballIndicator.style.borderRadius = '5px';
+  fireballIndicator.style.overflow = 'hidden';
+  fireballIndicator.id = 'fireball-cooldown';
+  
+  const cooldownFill = document.createElement('div');
+  cooldownFill.style.height = '100%';
+  cooldownFill.style.width = '100%';
+  cooldownFill.style.background = 'linear-gradient(to right, #ff4500, #ff8c00)';
+  cooldownFill.style.transition = 'width 0.1s linear';
+  cooldownFill.id = 'cooldown-fill';
+  
+  fireballIndicator.appendChild(cooldownFill);
+  document.body.appendChild(fireballIndicator);
+  
   updateExperienceDisplay();
 };
 
@@ -82,6 +113,18 @@ const showExpGainNotification = (amount: number) => {
     notificationTimeout = setTimeout(() => {
       notification.style.opacity = '0';
     }, 800);
+  }
+};
+
+// Update the fireball cooldown indicator
+const updateFireballCooldown = () => {
+  const now = Date.now();
+  const timeSinceFire = now - fireballSystem.lastFireTime;
+  const cooldownPercent = Math.min(100, (timeSinceFire / fireballSystem.cooldown) * 100);
+  
+  const cooldownFill = document.getElementById('cooldown-fill');
+  if (cooldownFill) {
+    cooldownFill.style.width = `${cooldownPercent}%`;
   }
 };
 
@@ -886,7 +929,15 @@ class Dragon {
   checkBuildingCollisions(previousPosition: THREE.Vector3) {
     // Check collisions with buildings
     for (const building of environment.buildings.children) {
-      if (this.isCollidingWithObject(building)) {
+      // For castles, check each part separately
+      if (building instanceof THREE.Group) {
+        for (const part of building.children) {
+          if (this.isCollidingWithObject(part)) {
+            this.handleCollision(part, previousPosition);
+            return; // Exit after first collision
+          }
+        }
+      } else if (this.isCollidingWithObject(building)) {
         this.handleCollision(building, previousPosition);
       }
     }
@@ -902,8 +953,7 @@ class Dragon {
   }
   
   isCollidingWithObject(object: THREE.Object3D): boolean {
-    // Simple distance-based collision detection
-    // Get the center of the object by finding its bounding box
+    // Get the bounding box of the object
     const boundingBox = new THREE.Box3().setFromObject(object);
     const objectCenter = new THREE.Vector3();
     boundingBox.getCenter(objectCenter);
@@ -911,7 +961,15 @@ class Dragon {
     // Get half the size of the object to estimate its radius
     const objectSize = new THREE.Vector3();
     boundingBox.getSize(objectSize);
-    const objectRadius = Math.max(objectSize.x, objectSize.z) * 0.4; // Reduced from 0.5 to 0.4
+    
+    // Adjust collision radius based on object type
+    let objectRadius;
+    if (object instanceof THREE.CylinderGeometry || object.name.includes('tower')) {
+      // For towers, use a tighter collision radius
+      objectRadius = Math.max(objectSize.x, objectSize.z) * 0.6;
+    } else {
+      objectRadius = Math.max(objectSize.x, objectSize.z) * 0.5;
+    }
     
     // Calculate distance between dragon and object centers
     const distance = this.body.position.distanceTo(objectCenter);
@@ -922,13 +980,13 @@ class Dragon {
     const horizontalDistance = dragonPos2D.distanceTo(objectPos2D);
     
     // Height check - if dragon is higher than object + some margin, no collision
-    const verticalClearance = this.body.position.y - (objectCenter.y + objectSize.y * 0.5);
-    if (verticalClearance > this.collisionRadius) {
+    const verticalClearance = this.body.position.y - (objectCenter.y + objectSize.y * 0.7);
+    if (verticalClearance > this.collisionRadius * 1.5) {
       return false;
     }
     
     // Return true if the dragon is colliding with the object
-    return horizontalDistance < (this.collisionRadius + objectRadius);
+    return horizontalDistance < (this.collisionRadius * 1.2 + objectRadius);
   }
   
   handleCollision(object: THREE.Object3D, previousPosition: THREE.Vector3) {
@@ -942,15 +1000,15 @@ class Dragon {
       .subVectors(this.body.position, objectCenter)
       .normalize();
     
-    // Move dragon back slightly and apply repulsion force
+    // Move dragon back to previous position
     this.body.position.copy(previousPosition);
     
-    // Apply gentler repulsion in the opposite direction (reduced from 0.5 to 0.3)
-    this.velocity.x = awayDirection.x * this.maxSpeed * 0.3;
-    this.velocity.z = awayDirection.z * this.maxSpeed * 0.3;
+    // Apply stronger repulsion in the opposite direction
+    this.velocity.x = awayDirection.x * this.maxSpeed * 0.5; // Increased from 0.3 to 0.5
+    this.velocity.z = awayDirection.z * this.maxSpeed * 0.5;
     
-    // Add a smaller upward component to help dragon fly over obstacles
-    this.velocity.y = Math.max(this.velocity.y, 0.02);
+    // Add a stronger upward component to help dragon fly over obstacles
+    this.velocity.y = Math.max(this.velocity.y, 0.05); // Increased from 0.02 to 0.05
     
     // Create visual feedback for collision, but only if it's been a while since last collision
     const now = Date.now();
@@ -962,7 +1020,7 @@ class Dragon {
       );
       
       collisionFeedback.createCollisionParticles(collisionPoint, 0xffcc00);
-      collisionFeedback.startCameraShake(0.06, 200); // Reduced shake intensity
+      collisionFeedback.startCameraShake(0.08, 200); // Increased shake intensity
       
       this.lastCollisionTime = now;
     }
@@ -990,6 +1048,50 @@ class Dragon {
       }
     });
   }
+  
+  // Add the shootFireball method
+  shootFireball() {
+    // Get position - from the dragon's mouth
+    const fireballOffset = new THREE.Vector3(0, 0.1, 0.8).applyQuaternion(this.body.quaternion);
+    const fireballPosition = this.body.position.clone().add(fireballOffset);
+    
+    // Always shoot in the forward direction of the camera
+    // This makes aiming much easier by using camera's forward vector
+    const cameraForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    
+    // Make sure fireballs don't go too much downward
+    if (cameraForward.y < -0.3) {
+      cameraForward.y = -0.3; // Limit downward angle
+      cameraForward.normalize();
+    }
+    
+    // Calculate damage based on dragon's level (10 + 1 per level)
+    const damage = 10; // Base damage - we'll update this when adding the leveling system
+    
+    // Fire!
+    const fireSuccess = fireballSystem.fire(fireballPosition, cameraForward, damage);
+    
+    // Visual feedback when firing
+    if (fireSuccess) {
+      // Add a slight backward force when shooting
+      this.velocity.sub(cameraForward.clone().multiplyScalar(0.03));
+      
+      // Add recoil effect (slight rotation)
+      this.body.rotation.x -= 0.08;
+      
+      // Add flash of light at mouth position
+      const flashLight = new THREE.PointLight(0xff4500, 3, 7); // Brighter flash
+      flashLight.position.copy(fireballPosition);
+      this.body.add(flashLight);
+      
+      // Remove the light after a short delay
+      setTimeout(() => {
+        this.body.remove(flashLight);
+      }, 100);
+    }
+    
+    return fireSuccess;
+  }
 }
 
 // Create player dragon
@@ -1011,7 +1113,12 @@ window.addEventListener('keydown', (e) => {
     case 'a': keys.a = true; break;
     case 's': keys.s = true; break;
     case 'd': keys.d = true; break;
-    case ' ': keys.space = true; break;
+    case ' ': 
+      keys.space = true; 
+      if (dragon) {
+        dragon.shootFireball();
+      }
+      break;
   }
 });
 
@@ -1052,8 +1159,9 @@ const followCamera = () => {
     targetCameraPos.z += (Math.random() - 0.5) * shakeIntensity * 0.5;
   }
   
-  // Smooth camera movement
-  camera.position.lerp(targetCameraPos, 0.06);
+  // Smooth camera movement with faster initial lerp
+  const lerpFactor = camera.position.distanceTo(targetCameraPos) > 5 ? 0.15 : 0.06;
+  camera.position.lerp(targetCameraPos, lerpFactor);
   
   // Look slightly ahead of the dragon in its forward direction
   const lookAtPos = dragPos.clone().add(
@@ -1083,6 +1191,17 @@ function animate() {
   // Update experience orbs animations
   experienceOrbs.update();
   
+  // Update fireballs
+  fireballSystem.update();
+  
+  // Update enemies
+  if (dragon) {
+    enemySystem.update(dragon.body.position);
+  }
+  
+  // Update fireball cooldown indicator
+  updateFireballCooldown();
+  
   // Check for dragon collision with orbs
   if (dragon) {
     const collectedCount = experienceOrbs.checkCollisions(dragon.body.position, 2);
@@ -1101,6 +1220,33 @@ function animate() {
       
       console.log(`Collected ${collectedCount} orbs! +${expGained} XP (Total: ${totalExperience})`);
     }
+  }
+  
+  // Check fireball collisions with environment objects
+  const collisionObjects = [
+    ...environment.buildings.children,
+    ...environment.obstacles.children
+  ];
+  
+  // Make sure to flatten group objects
+  const flatCollisionObjects: THREE.Object3D[] = [];
+  collisionObjects.forEach(obj => {
+    if (obj instanceof THREE.Group) {
+      flatCollisionObjects.push(...obj.children);
+    } else {
+      flatCollisionObjects.push(obj);
+    }
+  });
+  
+  // Check fireball collisions (with both environment and enemies)
+  const xpFromEnemies = fireballSystem.checkCollisions(flatCollisionObjects, enemySystem.enemies);
+  
+  // Add XP from defeated enemies
+  if (xpFromEnemies > 0) {
+    totalExperience += xpFromEnemies;
+    updateExperienceDisplay();
+    showExpGainNotification(xpFromEnemies);
+    console.log(`Enemy defeated! +${xpFromEnemies} XP (Total: ${totalExperience})`);
   }
   
   renderer.render(scene, camera);
