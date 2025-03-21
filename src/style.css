@@ -102,3 +102,77 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Start Screen Styling */
+.start-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+.start-screen h1 {
+  color: #ff9800;
+  margin-bottom: 20px;
+  text-shadow: 0 0 10px rgba(255, 152, 0, 0.6);
+}
+
+.start-screen-content {
+  background: rgba(20, 20, 30, 0.7);
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  max-width: 500px;
+  width: 90%;
+}
+
+.start-screen input {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0 20px;
+  border-radius: 5px;
+  border: 1px solid #444;
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+  font-size: 16px;
+}
+
+.start-screen button {
+  background: linear-gradient(to bottom, #ff9800, #f57c00);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+.start-screen button:hover {
+  background: linear-gradient(to bottom, #ffb74d, #ff9800);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Username display above dragon */
+.username-label {
+  position: absolute;
+  color: white;
+  font-weight: bold;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  user-select: none;
+  pointer-events: none;
+  text-shadow: 0 0 3px black;
+}

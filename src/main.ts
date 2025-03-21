@@ -5,6 +5,7 @@ import { ExperienceOrbs } from './experience-orbs'
 import { FireballSystem } from './fireballs'
 import { EnemySystem } from './enemy'
 import { LevelSystem, LEVEL_THRESHOLDS } from './level-system'
+import { StartScreen } from './start-screen'
 
 // Scene setup
 const scene = new THREE.Scene()
@@ -32,6 +33,30 @@ const enemySystem = new EnemySystem(scene);
 
 // Initialize experience orbs system
 const experienceOrbs = new ExperienceOrbs(scene, 150); // Create 150 orbs
+
+// Game state
+let isGameStarted = false;
+let playerUsername = '';
+let usernameLabel: HTMLElement | null = null;
+
+// Start the game when the player enters a username
+const startScreen = new StartScreen({
+  onGameStart: (username) => {
+    playerUsername = username;
+    isGameStarted = true;
+    
+    // Create a username label above the dragon
+    usernameLabel = document.createElement('div');
+    usernameLabel.className = 'username-label';
+    usernameLabel.textContent = username;
+    usernameLabel.style.position = 'absolute';
+    usernameLabel.style.top = '0';
+    usernameLabel.style.left = '50%';
+    usernameLabel.style.transform = 'translateX(-50%)';
+    usernameLabel.style.zIndex = '1000';
+    document.body.appendChild(usernameLabel);
+  }
+});
 
 // Create a collision feedback system
 class CollisionFeedback {
@@ -1220,8 +1245,22 @@ function animate() {
     environment.updateBoundaryVisualization(dragon.body.position);
   }
   
-  // Update collision feedback effects
+  // Update collision feedback
   collisionFeedback.update();
+  
+  // Update username position above dragon
+  if (usernameLabel && dragon && dragon.body && dragon.body.visible) {
+    const dragonScreenPos = new THREE.Vector3();
+    dragonScreenPos.setFromMatrixPosition(dragon.body.matrixWorld);
+    dragonScreenPos.project(camera);
+    
+    const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
+    
+    usernameLabel.style.transform = `translate(-50%, -100%)`;
+    usernameLabel.style.left = `${x}px`;
+    usernameLabel.style.top = `${y}px`;
+  }
   
   // Update camera
   followCamera();

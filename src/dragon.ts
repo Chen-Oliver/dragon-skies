@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FireballSystem } from './fireballs';
 import { ProgressionSystem } from './progression';
+import { UsernameDisplay } from './username-display';
 
 export class Dragon {
   body: THREE.Group;
@@ -22,6 +23,7 @@ export class Dragon {
   maxHealth: number = 100;
   lastCollisionTime: number = 0;
   collisionCooldown: number = 300; // ms
+  lastDamageTime: number = 0; // Store last time dragon took damage
   
   // Movement
   accelerationFactor: number = 0.02;
@@ -30,10 +32,14 @@ export class Dragon {
   accelerationRate: number = 0.0005;
   decelerationRate: number = 0.001;
   
+  // Multiplayer properties
+  username: string;
+  usernameDisplay: UsernameDisplay | null = null;
+  
   // Progression reference
   private progressionSystem: ProgressionSystem;
   
-  constructor(scene: THREE.Scene, size = 1, progressionSystem: ProgressionSystem) {
+  constructor(scene: THREE.Scene, size = 1, progressionSystem: ProgressionSystem, username = 'Player') {
     this.body = new THREE.Group();
     this.size = size;
     this.speed = 0.12;
@@ -45,6 +51,7 @@ export class Dragon {
     this.gravityForce = 0.005;
     this.collisionRadius = 1.5 * size;
     this.worldBoundary = 100; // Boundary of the world
+    this.username = username;
     
     this.progressionSystem = progressionSystem;
     
@@ -380,6 +387,11 @@ export class Dragon {
     // Tilt the dragon based on vertical movement
     const tiltAmount = Math.max(-0.3, Math.min(0.3, -this.velocity.y * 3));
     this.body.rotation.x = tiltAmount;
+    
+    // Update username display if it exists
+    if (this.usernameDisplay) {
+      this.usernameDisplay.update();
+    }
   }
   
   updateAcceleration() {
@@ -520,5 +532,35 @@ export class Dragon {
     
     // Fire!
     return fireballSystem.fire(spawnPosition, direction, damage);
+  }
+  
+  // Set up the username display
+  setupUsernameDisplay(camera: THREE.Camera) {
+    if (this.usernameDisplay) {
+      this.usernameDisplay.destroy();
+    }
+    
+    this.usernameDisplay = new UsernameDisplay(
+      this.username,
+      this.body,
+      camera,
+      new THREE.Vector3(0, 2 * this.size, 0) // Position above head, scales with dragon size
+    );
+  }
+  
+  // Update the username
+  setUsername(username: string) {
+    this.username = username;
+    if (this.usernameDisplay) {
+      this.usernameDisplay.setUsername(username);
+    }
+  }
+  
+  // Clean up resources
+  destroy() {
+    if (this.usernameDisplay) {
+      this.usernameDisplay.destroy();
+      this.usernameDisplay = null;
+    }
   }
 } 
