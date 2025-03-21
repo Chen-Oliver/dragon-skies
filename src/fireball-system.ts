@@ -60,27 +60,6 @@ export class Fireball {
       );
       extraGlow.scale.set(2.5, 2.5, 2.5);
       this.mesh.add(extraGlow);
-      
-      // Add a core for better visibility
-      const core = new THREE.Mesh(
-        new THREE.SphereGeometry(0.8, 12, 12),
-        new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          transparent: false
-        })
-      );
-      this.mesh.add(core);
-      
-      // Add pulsing animation
-      const pulseAnimation = () => {
-        if (this.isDead) return;
-        
-        const scale = 1.0 + 0.2 * Math.sin(Date.now() * 0.01);
-        extraGlow.scale.set(2.5 * scale, 2.5 * scale, 2.5 * scale);
-        
-        requestAnimationFrame(pulseAnimation);
-      };
-      pulseAnimation();
     }
     
     // Add glow effect - reuse geometry and clone material
@@ -91,7 +70,7 @@ export class Fireball {
     // Add light - reduced intensity for performance
     // Use different colors for local vs remote fireballs
     const lightColor = isLocal ? 0xff6600 : 0x00ffff;
-    const lightIntensity = isLocal ? 0.8 : 1.5; // Brighter for remote fireballs
+    const lightIntensity = isLocal ? 0.8 : 1.2; // Brighter for remote fireballs
     this.light = new THREE.PointLight(lightColor, lightIntensity, radius * 12);
     this.light.position.set(0, 0, 0);
     this.mesh.add(this.light);
@@ -124,14 +103,6 @@ export class Fireball {
     
     // Update position
     this.position.add(this.velocity);
-    
-    // Validate position to prevent NaN values
-    if (isNaN(this.position.x) || isNaN(this.position.y) || isNaN(this.position.z)) {
-      console.error('Fireball position contains NaN values, destroying fireball');
-      this.isDead = true;
-      return;
-    }
-    
     this.mesh.position.copy(this.position);
     
     // Animate fireball (rotation and pulse) - simplified for performance
@@ -259,6 +230,20 @@ export class FireballSystem {
   createRemoteFireball(fireballData: FireballData) {
     console.log(`Creating remote fireball at position: ${fireballData.position.x.toFixed(2)}, ${fireballData.position.y.toFixed(2)}, ${fireballData.position.z.toFixed(2)}`);
     
+    // Validate fireball data
+    if (!fireballData.position || !fireballData.direction || !fireballData.damage || !fireballData.radius) {
+      console.error('Invalid remote fireball data - missing required fields');
+      return null;
+    }
+    
+    // Validate position for NaN values
+    if (isNaN(fireballData.position.x) || isNaN(fireballData.position.y) || isNaN(fireballData.position.z) ||
+        isNaN(fireballData.direction.x) || isNaN(fireballData.direction.y) || isNaN(fireballData.direction.z) ||
+        isNaN(fireballData.damage) || isNaN(fireballData.radius)) {
+      console.error('Invalid remote fireball data - contains NaN values');
+      return null;
+    }
+    
     // Create Vector3 objects from the data
     const position = new THREE.Vector3(
       fireballData.position.x,
@@ -273,14 +258,19 @@ export class FireballSystem {
     );
     
     // Ensure direction is normalized
+    if (direction.length() === 0) {
+      console.error('Remote fireball has zero-length direction vector');
+      // Default to forward direction if invalid
+      direction.set(0, 0, 1);
+    }
     direction.normalize();
     
     console.log(`Remote fireball direction: ${direction.x.toFixed(2)}, ${direction.y.toFixed(2)}, ${direction.z.toFixed(2)}`);
     console.log(`Creating remote fireball with damage: ${fireballData.damage}, radius: ${fireballData.radius}`);
     
-    // Create distinct materials for remote fireballs
+    // Create distinct materials for remote fireballs - use brighter colors for visibility
     const remoteMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0x0088ff,  // Bright blue
+      color: 0x00ffff,  // Bright cyan
       transparent: false,
       opacity: 1.0
     });
@@ -288,28 +278,36 @@ export class FireballSystem {
     const remoteGlowMaterial = new THREE.MeshBasicMaterial({
       color: 0x00ffff,  // Cyan for glow
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.7,
       side: THREE.BackSide
     });
     
-    // Create the remote fireball with isLocal=false
-    const fireball = new Fireball(
-      this.scene,
-      position,
-      direction,
-      fireballData.damage,
-      fireballData.radius * 1.5, // Make remote fireballs larger for better visibility
-      this.geometry,
-      remoteMaterial,
-      this.glowGeometry,
-      remoteGlowMaterial,
-      false // isLocal = false for remote fireballs
-    );
-    
-    // Add to local tracking
-    this.fireballs.push(fireball);
-    console.log(`Total fireballs in system: ${this.fireballs.length}`);
-    return fireball;
+    try {
+      // Make remote fireballs larger and brighter for better visibility
+      const enhancedRadius = fireballData.radius * 2.0; // Double the size for visibility
+      
+      // Create the remote fireball with isLocal=false
+      const fireball = new Fireball(
+        this.scene,
+        position,
+        direction,
+        fireballData.damage,
+        enhancedRadius,
+        this.geometry,
+        remoteMaterial,
+        this.glowGeometry,
+        remoteGlowMaterial,
+        false // isLocal = false for remote fireballs
+      );
+      
+      // Add to local tracking
+      this.fireballs.push(fireball);
+      console.log(`Total fireballs in system: ${this.fireballs.length}`);
+      return fireball;
+    } catch (error) {
+      console.error('Error creating remote fireball:', error);
+      return null;
+    }
   }
   
   fire(position: THREE.Vector3, direction: THREE.Vector3, damage: number, isLocal: boolean = true): boolean {
@@ -435,64 +433,67 @@ export class FireballSystem {
       const fireball = this.fireballs[i];
       if (fireball.isDead) continue;
       
-      // Check collision with environment objects
-      for (const object of objects) {
-        // Skip objects without geometry
-        if (!(object instanceof THREE.Mesh)) continue;
-        
-        // Check if fireball is close to the object
-        const boundingBox = new THREE.Box3().setFromObject(object);
-        const objectCenter = new THREE.Vector3();
-        boundingBox.getCenter(objectCenter);
-        
-        // Get half the size of the object
-        const objectSize = new THREE.Vector3();
-        boundingBox.getSize(objectSize);
-        const objectRadius = Math.max(objectSize.x, objectSize.z) * 0.5;
-        
-        // Check distance between fireball and object centers
-        const distance = fireball.position.distanceTo(objectCenter);
-        
-        // If collision detected
-        if (distance < (fireball.radius + objectRadius)) {
-          fireball.handleCollision();
-          break;
-        }
-      }
-      
-      // Skip if fireball is already dead from environment collision
-      if (fireball.isDead) continue;
-      
-      // Check collision with enemies
-      for (const enemy of enemies) {
-        if (!enemy.alive) continue;
-        
-        // Get enemy position
-        const enemyPosition = enemy.body.position;
-        
-        // Check distance
-        const distance = fireball.position.distanceTo(enemyPosition);
-        
-        // If collision detected
-        if (distance < (fireball.radius + 1)) { // Assuming enemy radius is 1
-          // Handle direct hit
-          enemy.takeDamage(fireball.damage);
-          const killed = !enemy.alive;
-          fireball.handleCollision();
+      // Only local fireballs can damage environment and enemies
+      if (fireball.isLocal) {
+        // Check collision with environment objects
+        for (const object of objects) {
+          // Skip objects without geometry
+          if (!(object instanceof THREE.Mesh)) continue;
           
-          // Add XP if enemy was killed
-          if (killed) {
-            totalXP += 50;
+          // Check if fireball is close to the object
+          const boundingBox = new THREE.Box3().setFromObject(object);
+          const objectCenter = new THREE.Vector3();
+          boundingBox.getCenter(objectCenter);
+          
+          // Get half the size of the object
+          const objectSize = new THREE.Vector3();
+          boundingBox.getSize(objectSize);
+          const objectRadius = Math.max(objectSize.x, objectSize.z) * 0.5;
+          
+          // Check distance between fireball and object centers
+          const distance = fireball.position.distanceTo(objectCenter);
+          
+          // If collision detected
+          if (distance < (fireball.radius + objectRadius)) {
+            fireball.handleCollision();
+            break;
           }
+        }
+        
+        // Skip if fireball is already dead from environment collision
+        if (fireball.isDead) continue;
+        
+        // Check collision with enemies
+        for (const enemy of enemies) {
+          if (!enemy.alive) continue;
           
-          break;
+          // Get enemy position
+          const enemyPosition = enemy.body.position;
+          
+          // Check distance
+          const distance = fireball.position.distanceTo(enemyPosition);
+          
+          // If collision detected
+          if (distance < (fireball.radius + 1)) { // Assuming enemy radius is 1
+            // Handle direct hit
+            enemy.takeDamage(fireball.damage);
+            const killed = !enemy.alive;
+            fireball.handleCollision();
+            
+            // Add XP if enemy was killed
+            if (killed) {
+              totalXP += 50;
+            }
+            
+            break;
+          }
         }
       }
       
-      // Skip if fireball is already dead from enemies collision
+      // Skip if fireball is already dead from previous collisions
       if (fireball.isDead) continue;
       
-      // Check collisions with other players
+      // Check collisions with other players (both local and remote fireballs)
       if (otherPlayers && networkManager) {
         for (const [playerId, playerInfo] of otherPlayers.entries()) {
           const otherDragon = playerInfo.dragon;

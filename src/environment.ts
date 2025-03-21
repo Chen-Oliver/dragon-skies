@@ -404,4 +404,35 @@ export class Environment {
       (this.boundaryMesh.material as THREE.MeshBasicMaterial).opacity = opacity;
     }
   }
+
+  // Method to get all collision objects for fireball system
+  getCollisionObjects(): THREE.Object3D[] {
+    // Create array from buildings and obstacles
+    const collisionObjects = [
+      ...this.buildings.children,
+      ...this.obstacles.children
+    ];
+    
+    // Make sure to flatten group objects
+    const flatCollisionObjects: THREE.Object3D[] = [];
+    collisionObjects.forEach(obj => {
+      if (obj instanceof THREE.Group) {
+        flatCollisionObjects.push(...obj.children);
+      } else {
+        flatCollisionObjects.push(obj);
+      }
+    });
+    
+    return flatCollisionObjects;
+  }
+  
+  // Method to get building parts for dragon collision detection
+  getBuildingParts(): THREE.Object3D[] {
+    return this.buildings.children;
+  }
+  
+  // Method to get obstacles for dragon collision detection
+  getObstacles(): THREE.Object3D[] {
+    return this.obstacles.children;
+  }
 } 

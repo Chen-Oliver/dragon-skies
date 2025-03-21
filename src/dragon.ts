@@ -563,4 +563,36 @@ export class Dragon {
       this.usernameDisplay = null;
     }
   }
+  
+  // Check collisions with environment objects
+  checkEnvironmentCollisions(environmentObjects: THREE.Object3D[]) {
+    if (!environmentObjects || environmentObjects.length === 0) return;
+    
+    // Store current position for collision handling
+    const previousPosition = this.body.position.clone();
+    
+    // Check each object
+    for (const object of environmentObjects) {
+      if (this.isCollidingWithObject(object)) {
+        this.handleCollision(object, previousPosition);
+        return; // Exit after handling first collision
+      }
+    }
+  }
+  
+  // Check collisions with any array of objects
+  checkCollisionsWithObjects(objects: THREE.Object3D[]) {
+    if (!objects || objects.length === 0) return;
+    
+    // Store current position for collision handling
+    const previousPosition = this.body.position.clone();
+    
+    // Check each object
+    for (const object of objects) {
+      if (this.isCollidingWithObject(object)) {
+        this.handleCollision(object, previousPosition);
+        return; // Exit after handling first collision
+      }
+    }
+  }
 } 

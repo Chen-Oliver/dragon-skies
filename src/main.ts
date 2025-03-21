@@ -6,6 +6,18 @@ import { FireballSystem } from './fireballs'
 import { EnemySystem } from './enemy'
 import { LevelSystem, LEVEL_THRESHOLDS } from './level-system'
 import { StartScreen } from './start-screen'
+import { NetworkManager, PlayerData } from './network-manager'
+
+// Polyfill for requestAnimationFrame to ensure it continues in background
+// This will help maintain position updates even when tab isn't active
+const requestAnimationFramePolyfill = (function() {
+  return window.requestAnimationFrame ||
+    (window as any).webkitRequestAnimationFrame ||
+    (window as any).mozRequestAnimationFrame ||
+    function(callback) {
+      window.setTimeout(callback, 1000 / 60);
+    };
+})();
 
 // Scene setup
 const scene = new THREE.Scene()
@@ -40,11 +52,349 @@ let playerUsername = '';
 let usernameLabel: HTMLElement | null = null;
 let dragon: Dragon | null = null;
 
+// Keep track of other players' dragons
+const otherPlayerDragons: Map<string, { dragon: Dragon, label: HTMLElement }> = new Map();
+
+// Initialize network manager
+const networkManager = new NetworkManager();
+
+// Connect fireball system to network manager
+// When local fireballs are created, send to network
+fireballSystem.onFireballCreated((position, direction, damage, radius) => {
+  networkManager.sendFireball(position, direction, damage, radius);
+});
+
+// When remote fireballs are received, create them locally
+networkManager.onPlayerFireball((fireballData) => {
+  console.log(`Main: Received remote fireball from player ID ${fireballData.playerId}`);
+  console.log(`Main: Remote fireball data: position=(${fireballData.position.x.toFixed(2)}, ${fireballData.position.y.toFixed(2)}, ${fireballData.position.z.toFixed(2)}), damage=${fireballData.damage}, radius=${fireballData.radius}`);
+  
+  if (!fireballData.playerId) {
+    console.error('Remote fireball missing playerId, cannot create!');
+    return;
+  }
+  
+  const remoteFB = fireballSystem.createRemoteFireball(fireballData);
+  if (!remoteFB) {
+    console.error('Failed to create remote fireball!');
+  }
+});
+
+// Handle player damage events from other players
+networkManager.onPlayerDamage((data) => {
+  // Only process if we have a dragon
+  if (dragon) {
+    console.log(`Taking ${data.damage} damage from player ${data.sourcePlayerId}`);
+    
+    // Update local health
+    levelSystem.takeDamage(data.damage);
+    
+    // Visual feedback
+    collisionFeedback.startCameraShake(0.15, 300);
+    collisionFeedback.createCollisionParticles(dragon.body.position, 0xff0000);
+    
+    // Check if this damage killed us
+    if (levelSystem.getStats().currentHealth <= 0) {
+      handlePlayerDeath();
+    }
+  }
+});
+
+// Add a debug display element
+const debugDisplay = document.createElement('div');
+debugDisplay.style.position = 'absolute';
+debugDisplay.style.bottom = '10px';
+debugDisplay.style.left = '10px';
+debugDisplay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+debugDisplay.style.color = 'white';
+debugDisplay.style.padding = '10px';
+debugDisplay.style.fontFamily = 'monospace';
+debugDisplay.style.zIndex = '1000';
+document.body.appendChild(debugDisplay);
+
+// Function to update the debug display
+function updateDebugDisplay() {
+  if (!debugDisplay) return;
+  
+  const playerCount = otherPlayerDragons.size;
+  let debugText = `Connected players: ${playerCount + 1} (you + ${playerCount} others)<br>`;
+  
+  if (dragon) {
+    debugText += `Your position: ${dragon.body.position.x.toFixed(1)}, ${dragon.body.position.y.toFixed(1)}, ${dragon.body.position.z.toFixed(1)}<br>`;
+  }
+  
+  // Add fireball count to debug info
+  debugText += `Active fireballs: ${fireballSystem.fireballs.length}<br>`;
+  
+  debugText += `<br>Other players:<br>`;
+  otherPlayerDragons.forEach((otherPlayer, playerId) => {
+    const pos = otherPlayer.dragon.body.position;
+    debugText += `${otherPlayer.label.textContent}: ${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}<br>`;
+  });
+  
+  debugDisplay.innerHTML = debugText;
+}
+
+// Handle initial player list
+networkManager.onPlayersInitial((players: PlayerData[]) => {
+  // Create dragons for existing players
+  players.forEach(player => createOtherPlayerDragon(player));
+});
+
+// Handle player joining events
+networkManager.onPlayerJoined((player: PlayerData) => {
+  console.log(`Another player joined: ${player.name}`);
+  
+  // Only create dragons for players who have set their username
+  if (player.name === 'Unknown Player') {
+    console.log('Player has no username yet, not creating dragon');
+    return;
+  }
+  
+  // Create a dragon for the new player
+  createOtherPlayerDragon(player);
+});
+
+// Handle player leaving events
+networkManager.onPlayerLeft((player: PlayerData) => {
+  console.log(`Player left: ${player.name}`);
+  
+  // Remove the player's dragon
+  removeOtherPlayerDragon(player.id);
+});
+
+// Handle player position updates
+networkManager.onPlayerPositionUpdated((player: PlayerData) => {
+  updateOtherPlayerDragon(player);
+});
+
+// Handle player name changes
+networkManager.onPlayerNameChanged((player: PlayerData) => {
+  const otherPlayer = otherPlayerDragons.get(player.id);
+  if (otherPlayer) {
+    otherPlayer.label.textContent = player.name;
+  }
+});
+
+// Create a dragon for another player
+function createOtherPlayerDragon(player: PlayerData) {
+  console.log(`Creating dragon for player with data:`, player);
+  
+  // Create a modified version of Dragon that doesn't reset position or clear orbs
+  class RemotePlayerDragon extends Dragon {
+    // Add target position and rotation for interpolation
+    targetPosition: THREE.Vector3 = new THREE.Vector3();
+    targetRotation: THREE.Euler = new THREE.Euler();
+    positionLerpFactor: number = 0.1; // Controls how quickly to move to target position
+    rotationLerpFactor: number = 0.1; // Controls how quickly to rotate to target rotation
+    lastUpdateTime: number = Date.now();
+    
+    constructor(size = 1) {
+      super(size);
+      
+      // Remove this dragon from the scene since we'll manually add it in the right position
+      scene.remove(this.body);
+      
+      // Don't clear orbs - this would cause issues with multiple players
+      // No need to call clearOrbsNearStartPosition
+    }
+    
+    // Method to handle large jumps in position (teleporting)
+    teleportTo(position: THREE.Vector3, rotation: THREE.Euler) {
+      // Immediately set both actual and target position
+      this.body.position.copy(position);
+      this.targetPosition.copy(position);
+      
+      // Immediately set both actual and target rotation
+      this.body.rotation.copy(rotation);
+      this.targetRotation.copy(rotation);
+      
+      // Force matrix update
+      this.body.updateMatrixWorld(true);
+    }
+    
+    // Override update method to handle interpolation
+    update() {
+      const now = Date.now();
+      const timeSinceLastUpdate = now - this.lastUpdateTime;
+      
+      // If it's been more than 5 seconds since last update, dragon might be reappearing after being gone
+      // In that case, we should snap to the target position instead of interpolating
+      if (timeSinceLastUpdate > 5000) {
+        this.body.position.copy(this.targetPosition);
+        this.body.rotation.copy(this.targetRotation);
+        this.lastUpdateTime = now;
+      } else {
+        // Normal interpolation for smooth movement
+        // Interpolate position smoothly
+        this.body.position.lerp(this.targetPosition, this.positionLerpFactor);
+        
+        // Interpolate rotation smoothly - need to handle Euler rotation differently
+        this.body.rotation.x += (this.targetRotation.x - this.body.rotation.x) * this.rotationLerpFactor;
+        this.body.rotation.y += (this.targetRotation.y - this.body.rotation.y) * this.rotationLerpFactor;
+        this.body.rotation.z += (this.targetRotation.z - this.body.rotation.z) * this.rotationLerpFactor;
+      }
+      
+      // Wing flapping animation
+      const time = Date.now() * 0.001;
+      const flapSpeed = 5;
+      const flapAmount = Math.sin(time * flapSpeed) * 0.2 + 0.2;
+      
+      if (this.leftWing) {
+        this.leftWing.rotation.z = flapAmount;
+      }
+      
+      if (this.rightWing) {
+        this.rightWing.rotation.z = -flapAmount;
+      }
+      
+      // Update world matrix
+      this.body.updateMatrixWorld(true);
+    }
+  }
+  
+  // Create a new Dragon instance with the correct parameters
+  const otherDragon = new RemotePlayerDragon(player.size || 1);
+  
+  // Now manually add to scene
+  scene.add(otherDragon.body);
+  
+  // IMPORTANT: Disable frustum culling to ensure updates happen even when off-screen
+  otherDragon.body.traverse((object) => {
+    if (object instanceof THREE.Mesh || object instanceof THREE.Group) {
+      object.frustumCulled = false;
+    }
+  });
+  
+  // IMPORTANT: Set initial position and rotation if available
+  if (player.position) {
+    otherDragon.body.position.set(
+      player.position.x,
+      player.position.y,
+      player.position.z
+    );
+    // Set target position to match initial position
+    otherDragon.targetPosition.copy(otherDragon.body.position);
+    
+    console.log(`Set initial position: ${player.position.x}, ${player.position.y}, ${player.position.z}`);
+  }
+  
+  if (player.rotation) {
+    otherDragon.body.rotation.set(
+      player.rotation.x,
+      player.rotation.y,
+      player.rotation.z
+    );
+    // Set target rotation to match initial rotation
+    otherDragon.targetRotation.copy(otherDragon.body.rotation);
+    
+    console.log(`Set initial rotation: ${player.rotation.x}, ${player.rotation.y}, ${player.rotation.z}`);
+  }
+  
+  // Ensure the world matrix is updated immediately
+  otherDragon.body.updateMatrixWorld(true);
+  
+  // Create username label
+  const label = document.createElement('div');
+  label.className = 'username-label';
+  label.textContent = player.name || 'Unknown Player'; // Ensure we use the provided name
+  label.style.position = 'absolute';
+  label.style.color = '#FFFF00'; // Make other players' labels yellow to distinguish
+  label.style.transform = 'translateX(-50%)';
+  label.style.zIndex = '1000';
+  document.body.appendChild(label);
+  
+  // Store the dragon and label
+  otherPlayerDragons.set(player.id, { dragon: otherDragon, label });
+  
+  console.log(`Created dragon for player ${player.name} (${player.id})`); // Add debug log
+}
+
+// Update the position and rotation of another player's dragon
+function updateOtherPlayerDragon(player: PlayerData) {
+  const otherPlayer = otherPlayerDragons.get(player.id);
+  if (!otherPlayer || !player.position || !player.rotation) {
+    return;
+  }
+  
+  if (!otherPlayer.dragon.body) {
+    console.error(`Dragon body is null for player ${player.id}`);
+    return;
+  }
+  
+  // Only log periodically to avoid flooding the console
+  const now = Date.now();
+  if (now % 3000 < 50) { // Log approximately every 3 seconds
+    console.log(`Updating dragon for player ${player.name} (${player.id})`);
+    console.log(`  Current position: ${otherPlayer.dragon.body.position.x.toFixed(2)}, ${otherPlayer.dragon.body.position.y.toFixed(2)}, ${otherPlayer.dragon.body.position.z.toFixed(2)}`);
+    console.log(`  Target position: ${player.position.x.toFixed(2)}, ${player.position.y.toFixed(2)}, ${player.position.z.toFixed(2)}`);
+  }
+  
+  // Get the RemotePlayerDragon instance
+  const remotePlayerDragon = otherPlayer.dragon as any; // Using any here to access the custom properties
+  
+  // Check if this is a large position change that requires teleporting
+  const currentPos = otherPlayer.dragon.body.position;
+  const newPos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
+  const distance = currentPos.distanceTo(newPos);
+  
+  if (distance > 10) {
+    // This is a large jump, use teleport
+    console.log(`Teleporting dragon for ${player.name} - distance: ${distance.toFixed(2)}`);
+    const newRot = new THREE.Euler(player.rotation.x, player.rotation.y, player.rotation.z);
+    remotePlayerDragon.teleportTo(newPos, newRot);
+    remotePlayerDragon.lastUpdateTime = now;
+  } else {
+    // Normal update - just update target position and rotation
+    if (remotePlayerDragon.targetPosition) {
+      remotePlayerDragon.targetPosition.set(
+        player.position.x,
+        player.position.y,
+        player.position.z
+      );
+    }
+    
+    if (remotePlayerDragon.targetRotation) {
+      remotePlayerDragon.targetRotation.set(
+        player.rotation.x,
+        player.rotation.y,
+        player.rotation.z
+      );
+    }
+    
+    // Update the last update time
+    remotePlayerDragon.lastUpdateTime = now;
+  }
+  
+  // Only log periodically
+  if (now % 3000 < 50) {
+    console.log(`  New target position: ${remotePlayerDragon.targetPosition.x.toFixed(2)}, ${remotePlayerDragon.targetPosition.y.toFixed(2)}, ${remotePlayerDragon.targetPosition.z.toFixed(2)}`);
+  }
+}
+
+// Remove another player's dragon
+function removeOtherPlayerDragon(playerId: string) {
+  const otherPlayer = otherPlayerDragons.get(playerId);
+  if (!otherPlayer) return;
+  
+  // Remove the dragon from the scene
+  scene.remove(otherPlayer.dragon.body);
+  
+  // Remove the username label
+  document.body.removeChild(otherPlayer.label);
+  
+  // Remove from the map
+  otherPlayerDragons.delete(playerId);
+}
+
 // Start the game when the player enters a username
 const startScreen = new StartScreen({
   onGameStart: (username) => {
     playerUsername = username;
     isGameStarted = true;
+    
+    // Set the player name in the network manager
+    networkManager.setPlayerName(username);
     
     // Create the dragon now that we have a username
     dragon = new Dragon(1);
@@ -60,6 +410,11 @@ const startScreen = new StartScreen({
     usernameLabel.style.zIndex = '1000';
     document.body.appendChild(usernameLabel);
   }
+});
+
+// Clean up network connection when the window is closed
+window.addEventListener('beforeunload', () => {
+  networkManager.disconnect();
 });
 
 // Create a collision feedback system
@@ -1025,10 +1380,14 @@ class Dragon {
     // Get level stats for damage
     const stats = levelSystem.getStats();
     
-    // Fire fireball with damage from level system
-    const fireSuccess = fireballSystem.fire(fireballPosition, cameraForward, stats.damage);
+    console.log(`Attempting to fire fireball from position (${fireballPosition.x.toFixed(2)}, ${fireballPosition.y.toFixed(2)}, ${fireballPosition.z.toFixed(2)})`);
+    
+    // Fire fireball with damage from level system - passing true for isLocal parameter
+    const fireSuccess = fireballSystem.fire(fireballPosition, cameraForward, stats.damage, true);
     
     if (fireSuccess) {
+      console.log(`Fireball fired successfully!`);
+      
       // Add a slight backward force when shooting
       this.velocity.sub(cameraForward.clone().multiplyScalar(0.03));
       
@@ -1278,11 +1637,19 @@ function handlePlayerDeath() {
 
 // Animation loop
 function animate() {
-  requestAnimationFrame(animate);
+  requestAnimationFramePolyfill(animate);
+  
+  // Calculate deltaTime for consistent animations regardless of frame rate
+  const currentTime = Date.now();
+  const deltaTime = (currentTime - lastFrameTime) / 1000; // Convert to seconds
+  lastFrameTime = currentTime;
   
   // Update basic animations regardless of game state
   experienceOrbs.update();
   collisionFeedback.update();
+  
+  // Update the debug display
+  updateDebugDisplay();
   
   // Only run game logic if the game has started
   if (isGameStarted && dragon) {
@@ -1292,8 +1659,15 @@ function animate() {
       
       // Update boundary visualization based on dragon position
       environment.updateBoundaryVisualization(dragon.body.position);
+      
+      // Send position update to server (every frame for more responsive multiplayer)
+      networkManager.sendPositionUpdate(
+        dragon.body.position, 
+        dragon.body.rotation, 
+        dragon.size
+      );
     }
-  
+    
     // Update username position above dragon
     if (usernameLabel && dragon.body.visible) {
       const dragonScreenPos = new THREE.Vector3();
@@ -1307,13 +1681,43 @@ function animate() {
       usernameLabel.style.left = `${x}px`;
       usernameLabel.style.top = `${y}px`;
     }
+    
+    // Update other players' dragons and username labels
+    otherPlayerDragons.forEach((otherPlayer, playerId) => {
+      // Call the update method to perform interpolation
+      otherPlayer.dragon.update();
+      
+      // Update label position
+      const dragonScreenPos = new THREE.Vector3();
+      dragonScreenPos.setFromMatrixPosition(otherPlayer.dragon.body.matrixWorld);
+      dragonScreenPos.project(camera);
+      
+      // Calculate screen position
+      const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
+      
+      // Check if the player is on screen (with some margin)
+      const isOnScreen = 
+        dragonScreenPos.x > -1.2 && dragonScreenPos.x < 1.2 && 
+        dragonScreenPos.y > -1.2 && dragonScreenPos.y < 1.2 &&
+        dragonScreenPos.z < 1;
+      
+      // Only show label if on screen
+      otherPlayer.label.style.display = isOnScreen ? 'block' : 'none';
+      
+      if (isOnScreen) {
+        otherPlayer.label.style.transform = `translate(-50%, -100%)`;
+        otherPlayer.label.style.left = `${x}px`;
+        otherPlayer.label.style.top = `${y}px`;
+      }
+    });
   
     // Update camera
     followCamera();
-  
-    // Update fireballs
-    fireballSystem.update();
-  
+    
+    // Update fireballs with deltaTime for consistent movement
+    fireballSystem.update(deltaTime);
+    
     // Update enemies and check for attacks
     if (!isPlayerDead) {
       enemySystem.update(dragon.body.position);
@@ -1331,27 +1735,19 @@ function animate() {
     }
     
     // Check fireball collisions with environment objects
-    const collisionObjects = [
-      ...environment.buildings.children,
-      ...environment.obstacles.children
-    ];
+    const environmentObjects = environment ? environment.getCollisionObjects() : [];
     
-    // Make sure to flatten group objects
-    const flatCollisionObjects: THREE.Object3D[] = [];
-    collisionObjects.forEach(obj => {
-      if (obj instanceof THREE.Group) {
-        flatCollisionObjects.push(...obj.children);
-      } else {
-        flatCollisionObjects.push(obj);
-      }
-    });
+    // Check fireball collisions with environment, enemies, and other players
+    const fireballXP = fireballSystem.checkCollisions(
+      environmentObjects, 
+      enemySystem.enemies,
+      otherPlayerDragons,
+      networkManager
+    );
     
-    // Check fireball collisions (with both environment and enemies)
-    const xpFromEnemies = fireballSystem.checkCollisions(flatCollisionObjects, enemySystem.enemies);
-    
-    // Add XP from defeated enemies
-    if (xpFromEnemies > 0) {
-      levelSystem.addExperience(xpFromEnemies);
+    // Add experience from fireball kills
+    if (fireballXP > 0) {
+      levelSystem.addExperience(fireballXP);
     }
   }
   
@@ -1366,4 +1762,19 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
 
-animate()
+// Add a state to track if animation is running
+let animationRunning = false;
+
+// Track the last frame time for deltaTime calculation
+let lastFrameTime = Date.now();
+
+// Start the animation loop
+function startAnimation() {
+  if (!animationRunning) {
+    animationRunning = true;
+    animate();
+  }
+}
+
+// Start the animation when the page loads
+startAnimation();
