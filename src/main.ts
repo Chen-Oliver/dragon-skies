@@ -729,6 +729,9 @@ class Dragon {
     const terrainHeight = environment.getTerrainHeight(this.body.position.x, this.body.position.z);
     const minHeight = terrainHeight + 1; // Keep dragon at least 1 unit above terrain
     
+    // Define maximum height limit
+    const maxHeight = 100; // Maximum flying height
+    
     // Smooth terrain collision
     if (this.body.position.y < minHeight) {
       this.body.position.y = minHeight;
@@ -736,6 +739,26 @@ class Dragon {
       // Softer bounce when hitting terrain
       if (this.velocity.y < 0) {
         this.velocity.y = Math.abs(this.velocity.y) * 0.2; // Gentle bounce
+      }
+    }
+    
+    // Enforce maximum height limit
+    if (this.body.position.y > maxHeight) {
+      this.body.position.y = maxHeight;
+      
+      // Stop upward momentum
+      if (this.velocity.y > 0) {
+        this.velocity.y = 0;
+      }
+      
+      // Create visual feedback for hitting the height ceiling
+      const now = Date.now();
+      if (now - this.lastCollisionTime > this.collisionCooldown) {
+        // Create particles at the height limit
+        collisionFeedback.createCollisionParticles(this.body.position, 0xffffff); // White particles for height limit
+        collisionFeedback.startCameraShake(0.03, 150); // Light shake
+        
+        this.lastCollisionTime = now;
       }
     }
     
