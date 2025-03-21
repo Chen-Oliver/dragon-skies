@@ -38,12 +38,16 @@ const experienceOrbs = new ExperienceOrbs(scene, 150); // Create 150 orbs
 let isGameStarted = false;
 let playerUsername = '';
 let usernameLabel: HTMLElement | null = null;
+let dragon: Dragon | null = null;
 
 // Start the game when the player enters a username
 const startScreen = new StartScreen({
   onGameStart: (username) => {
     playerUsername = username;
     isGameStarted = true;
+    
+    // Create the dragon now that we have a username
+    dragon = new Dragon(1);
     
     // Create a username label above the dragon
     usernameLabel = document.createElement('div');
@@ -1026,9 +1030,6 @@ class Dragon {
   }
 }
 
-// Create player dragon
-const dragon = new Dragon(1);
-
 // Add a flag to track player death state
 let isPlayerDead = false;
 
@@ -1090,6 +1091,8 @@ window.addEventListener('keyup', (e) => {
 
 // Follow camera
 const followCamera = () => {
+  if (!dragon) return;
+  
   // More dynamic camera that responds to dragon's orientation
   const dragPos = dragon.body.position.clone();
   
@@ -1168,55 +1171,72 @@ function updateEnemyAttacks() {
 
 // Handle player death
 function handlePlayerDeath() {
+  if (!dragon) return;
+  
   // Set player as dead
   isPlayerDead = true;
   
-  // Clear all key states to prevent movement
-  keys.w = false;
-  keys.a = false;
-  keys.s = false;
-  keys.d = false;
-  keys.space = false;
+  // Make dragon invisible
+  dragon.body.visible = false;
   
-  // Create death effect
-  const deathExplosion = new THREE.PointLight(0xff0000, 5, 20);
+  // Create death explosion
+  const deathExplosionGeometry = new THREE.SphereGeometry(0.1, 32, 32);
+  const deathExplosionMaterial = new THREE.MeshBasicMaterial({
+    color: 0xFF5500,
+    transparent: true,
+    opacity: 0.8
+  });
+  
+  const deathExplosion = new THREE.PointLight(0xFF5500, 5, 50);
   deathExplosion.position.copy(dragon.body.position);
+  deathExplosion.add(new THREE.Mesh(deathExplosionGeometry, deathExplosionMaterial));
   scene.add(deathExplosion);
   
-  // Add particles
-  for (let i = 0; i < 20; i++) {
-    collisionFeedback.createCollisionParticles(dragon.body.position, 0xff0000);
-  }
+  // Animate the explosion
+  const startTime = Date.now();
+  const animateExplosion = () => {
+    const elapsed = Date.now() - startTime;
+    const scale = Math.min(10, elapsed / 100);
+    
+    deathExplosion.intensity = Math.max(0, 5 - elapsed / 100);
+    deathExplosionMaterial.opacity = Math.max(0, 0.8 - elapsed / 500);
+    
+    deathExplosion.children[0].scale.set(scale, scale, scale);
+    
+    if (elapsed < 1000) {
+      requestAnimationFrame(animateExplosion);
+    }
+  };
   
-  // Strong camera shake
-  collisionFeedback.startCameraShake(0.3, 1000);
+  animateExplosion();
   
-  // Display death message
+  // Add death message
   const deathMessage = document.createElement('div');
+  deathMessage.className = 'death-message';
+  deathMessage.innerHTML = 'You Died!<br>Respawning...';
   deathMessage.style.position = 'absolute';
   deathMessage.style.top = '50%';
   deathMessage.style.left = '50%';
   deathMessage.style.transform = 'translate(-50%, -50%)';
-  deathMessage.style.color = '#ff0000';
-  deathMessage.style.fontSize = '48px';
+  deathMessage.style.color = '#FF0000';
+  deathMessage.style.fontSize = '32px';
   deathMessage.style.fontWeight = 'bold';
-  deathMessage.style.textShadow = '0 0 10px #000';
-  deathMessage.style.zIndex = '1000';
-  deathMessage.textContent = 'YOU DIED';
+  deathMessage.style.textShadow = '0 0 10px #FF0000';
+  deathMessage.style.textAlign = 'center';
   document.body.appendChild(deathMessage);
   
-  // Hide dragon temporarily
-  dragon.body.visible = false;
-  
-  // Reset player after a delay
+  // Respawn after a delay
   setTimeout(() => {
-    // Reset level system
+    if (!dragon) return;
+    
+    // Reset health
     levelSystem.reset();
     
-    // Reset dragon position
-    dragon.body.position.set(0, 30, 0);
+    // Reset position
+    dragon.body.position.set(0, 15, 0);
     dragon.velocity.set(0, 0, 0);
-    dragon.body.rotation.set(0, 0, 0);
+    
+    // Show dragon again
     dragon.body.visible = true;
     
     // Remove death message
@@ -1237,84 +1257,82 @@ function handlePlayerDeath() {
 function animate() {
   requestAnimationFrame(animate);
   
-  // Update dragon physics and animations
-  if (dragon && !isPlayerDead) {
-    dragon.update();
-    
-    // Update boundary visualization based on dragon position
-    environment.updateBoundaryVisualization(dragon.body.position);
-  }
-  
-  // Update collision feedback
+  // Update basic animations regardless of game state
+  experienceOrbs.update();
   collisionFeedback.update();
   
-  // Update username position above dragon
-  if (usernameLabel && dragon && dragon.body && dragon.body.visible) {
-    const dragonScreenPos = new THREE.Vector3();
-    dragonScreenPos.setFromMatrixPosition(dragon.body.matrixWorld);
-    dragonScreenPos.project(camera);
-    
-    const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
-    
-    usernameLabel.style.transform = `translate(-50%, -100%)`;
-    usernameLabel.style.left = `${x}px`;
-    usernameLabel.style.top = `${y}px`;
-  }
+  // Only run game logic if the game has started
+  if (isGameStarted && dragon) {
+    // Update dragon physics and animations
+    if (!isPlayerDead) {
+      dragon.update();
+      
+      // Update boundary visualization based on dragon position
+      environment.updateBoundaryVisualization(dragon.body.position);
+    }
   
-  // Update camera
-  followCamera();
+    // Update username position above dragon
+    if (usernameLabel && dragon.body.visible) {
+      const dragonScreenPos = new THREE.Vector3();
+      dragonScreenPos.setFromMatrixPosition(dragon.body.matrixWorld);
+      dragonScreenPos.project(camera);
+      
+      const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
+      
+      usernameLabel.style.transform = `translate(-50%, -100%)`;
+      usernameLabel.style.left = `${x}px`;
+      usernameLabel.style.top = `${y}px`;
+    }
   
-  // Update experience orbs animations
-  experienceOrbs.update();
+    // Update camera
+    followCamera();
   
-  // Update fireballs
-  fireballSystem.update();
+    // Update fireballs
+    fireballSystem.update();
   
-  // Update enemies and check for attacks
-  if (dragon && !isPlayerDead) {
-    enemySystem.update(dragon.body.position);
-    updateEnemyAttacks();
-  }
+    // Update enemies and check for attacks
+    if (!isPlayerDead) {
+      enemySystem.update(dragon.body.position);
+      updateEnemyAttacks();
+    }
   
-  // Check for dragon collision with orbs
-  if (dragon) {
+    // Check for dragon collision with orbs
     const collectedCount = experienceOrbs.checkCollisions(dragon.body.position, 2);
     
     // If orbs were collected, add experience and show feedback
     if (collectedCount > 0) {
       // Add exactly 10 XP per orb
       const expGained = collectedCount * 10;
-      
-      // Add experience to level system
       levelSystem.addExperience(expGained);
     }
-  }
-  
-  // Check fireball collisions with environment objects
-  const collisionObjects = [
-    ...environment.buildings.children,
-    ...environment.obstacles.children
-  ];
-  
-  // Make sure to flatten group objects
-  const flatCollisionObjects: THREE.Object3D[] = [];
-  collisionObjects.forEach(obj => {
-    if (obj instanceof THREE.Group) {
-      flatCollisionObjects.push(...obj.children);
-    } else {
-      flatCollisionObjects.push(obj);
+    
+    // Check fireball collisions with environment objects
+    const collisionObjects = [
+      ...environment.buildings.children,
+      ...environment.obstacles.children
+    ];
+    
+    // Make sure to flatten group objects
+    const flatCollisionObjects: THREE.Object3D[] = [];
+    collisionObjects.forEach(obj => {
+      if (obj instanceof THREE.Group) {
+        flatCollisionObjects.push(...obj.children);
+      } else {
+        flatCollisionObjects.push(obj);
+      }
+    });
+    
+    // Check fireball collisions (with both environment and enemies)
+    const xpFromEnemies = fireballSystem.checkCollisions(flatCollisionObjects, enemySystem.enemies);
+    
+    // Add XP from defeated enemies
+    if (xpFromEnemies > 0) {
+      levelSystem.addExperience(xpFromEnemies);
     }
-  });
-  
-  // Check fireball collisions (with both environment and enemies)
-  const xpFromEnemies = fireballSystem.checkCollisions(flatCollisionObjects, enemySystem.enemies);
-  
-  // Add XP from defeated enemies
-  if (xpFromEnemies > 0) {
-    levelSystem.addExperience(xpFromEnemies);
   }
   
+  // Always render the scene
   renderer.render(scene, camera);
 }
 
