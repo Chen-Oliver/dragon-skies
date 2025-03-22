@@ -24,66 +24,98 @@ export const DragonColors: Record<string, DragonColorScheme> = {
   "Orange": {
     name: "Orange",
     body: 0xff7700,   // Bright orange
-    belly: 0xffcc88,  // Light cream
-    wings: 0xff4400,  // Deep orange-red
-    horns: 0xffffcc,  // Pale yellow
+    belly: 0xffffcc,  // Pale yellow
+    wings: 0xcc44ff,  // Purple wings
+    horns: 0x66ccff,  // Sky blue
     spots: 0xff3300   // Red-orange spots
   },
   "Blue": {
     name: "Blue",
     body: 0x4477ff,   // Bright blue
-    belly: 0x99ccff,  // Light blue
-    wings: 0x0044cc,  // Deep blue
-    horns: 0xddddff,  // Pale blue-white
-    spots: 0x0088ff   // Medium blue spots
+    belly: 0xffddaa,  // Peach
+    wings: 0xffaa22,  // Golden yellow
+    horns: 0xffffff,  // White
+    spots: 0xff55aa   // Pink spots
   },
   "Green": {
     name: "Green",
     body: 0x44cc66,   // Bright green
-    belly: 0xaaffbb,  // Light mint
-    wings: 0x228833,  // Deep green
-    horns: 0xccffdd,  // Pale green
-    spots: 0x22aa44   // Medium green spots
+    belly: 0xffeebb,  // Cream
+    wings: 0xff66bb,  // Pink
+    horns: 0xffcc22,  // Gold
+    spots: 0x9944cc   // Purple spots
   },
   "Purple": {
     name: "Purple",
     body: 0x9944cc,   // Bright purple
-    belly: 0xccaaff,  // Light lavender
-    wings: 0x662299,  // Deep purple
-    horns: 0xeeddff,  // Pale lavender
-    spots: 0x7722aa   // Medium purple spots
+    belly: 0xaaffee,  // Mint green
+    wings: 0xffcc22,  // Gold
+    horns: 0x66ccff,  // Sky blue
+    spots: 0xff66bb   // Pink spots
   },
   "Pink": {
     name: "Pink",
     body: 0xff66bb,   // Bright pink
-    belly: 0xffbbdd,  // Light pink
-    wings: 0xff2288,  // Deep pink
-    horns: 0xffeeff,  // Pale pink
-    spots: 0xff44aa   // Medium pink spots
+    belly: 0xffffcc,  // Pale yellow
+    wings: 0x66ccff,  // Sky blue
+    horns: 0xaaffee,  // Mint green
+    spots: 0xcc44ff   // Purple spots
   },
   "Yellow": {
     name: "Yellow",
     body: 0xffcc22,   // Bright yellow
-    belly: 0xffffaa,  // Light yellow
-    wings: 0xffaa00,  // Deep yellow/gold
-    horns: 0xffffee,  // Pale yellow
-    spots: 0xffbb44   // Orange-yellow spots
+    belly: 0xaaffee,  // Mint green
+    wings: 0xff66bb,  // Pink
+    horns: 0x66ccff,  // Sky blue
+    spots: 0x9944cc   // Purple spots
   },
   "Teal": {
     name: "Teal",
     body: 0x44cccc,   // Bright teal
-    belly: 0xaaffff,  // Light cyan
-    wings: 0x227777,  // Deep teal
-    horns: 0xccffff,  // Pale cyan
-    spots: 0x22aaaa   // Medium teal spots
+    belly: 0xffddaa,  // Peach
+    wings: 0xff66bb,  // Pink
+    horns: 0xffcc22,  // Gold
+    spots: 0x9944cc   // Purple spots
   },
   "Red": {
     name: "Red",
     body: 0xff4444,   // Bright red
-    belly: 0xffaaaa,  // Light salmon
-    wings: 0xbb2222,  // Deep red
-    horns: 0xffeeee,  // Pale pink
-    spots: 0xcc3333   // Medium red spots
+    belly: 0xaaffee,  // Mint green
+    wings: 0x66ccff,  // Sky blue
+    horns: 0xffcc22,  // Gold
+    spots: 0x9944cc   // Purple spots
+  },
+  "Rainbow": {
+    name: "Rainbow",
+    body: 0x77aaff,   // Sky blue
+    belly: 0xffff44,  // Bright yellow
+    wings: 0xff44aa,  // Hot pink
+    horns: 0xff8800,  // Orange
+    spots: 0x66ff66   // Lime green
+  },
+  "Galaxy": {
+    name: "Galaxy",
+    body: 0x442266,   // Brighter deep space purple
+    belly: 0x8844ff,  // Bright purple
+    wings: 0x00ccff,  // Bright cyan
+    horns: 0xffffff,  // White
+    spots: 0xff44ff   // Magenta
+  },
+  "Candy": {
+    name: "Candy",
+    body: 0xff99cc,   // Cotton candy pink
+    belly: 0xaaffff,  // Light cyan
+    wings: 0xffcc66,  // Caramel
+    horns: 0xffffff,  // White
+    spots: 0xaa44ff   // Grape
+  },
+  "Sunset": {
+    name: "Sunset",
+    body: 0xff6622,   // Sunset orange
+    belly: 0xffdd44,  // Golden yellow
+    wings: 0xff99aa,  // Pink sky
+    horns: 0xffbbaa,  // Coral
+    spots: 0x9977ff   // Purple dusk
   }
 };
 
