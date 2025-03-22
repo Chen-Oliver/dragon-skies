@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generate Collect Sound</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Experience Orb Collect Sound Generator</h1>
+  <p>This page generates a simple "collect" sound effect for experience orbs.</p>
+  
+  <div>
+    <button id="playButton">Play Sound</button>
+    <button id="downloadButton">Download Sound</button>
+  </div>
+  
+  <script>
+    let audioContext;
+    let collectBuffer;
+    
+    // Initialize audio context on user interaction
+    function initAudio() {
+      if (audioContext) return;
+      
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      generateCollectSound();
+    }
+    
+    // Generate the collect sound
+    function generateCollectSound() {
+      const duration = 0.3;
+      const sampleRate = audioContext.sampleRate;
+      const bufferSize = duration * sampleRate;
+      collectBuffer = audioContext.createBuffer(1, bufferSize, sampleRate);
+      
+      // Get the buffer data
+      const channelData = collectBuffer.getChannelData(0);
+      
+      // Generate a "pling" sound
+      for (let i = 0; i < bufferSize; i++) {
+        const t = i / sampleRate;
+        
+        // Base frequency that rises
+        const baseFreq = 1200 + 600 * (t * 8);
+        
+        // Create the main tone
+        const mainTone = Math.sin(2 * Math.PI * baseFreq * t);
+        
+        // Create a higher harmonic
+        const harmonic = Math.sin(2 * Math.PI * baseFreq * 1.5 * t) * 0.3;
+        
+        // Apply an amplitude envelope (starts at 0, rises quickly, then decays)
+        const envelope = Math.max(0, 1 - t * 3.5);
+        
+        // Combine waveforms with envelope
+        channelData[i] = (mainTone + harmonic) * envelope * 0.5;
+      }
+    }
+    
+    // Play the generated sound
+    function playSound() {
+      if (!audioContext) initAudio();
+      
+      const source = audioContext.createBufferSource();
+      source.buffer = collectBuffer;
+      source.connect(audioContext.destination);
+      source.start();
+    }
+    
+    // Convert buffer to WAV format for download
+    function bufferToWav(buffer) {
+      const numChannels = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
+      const format = 1; // PCM
+      const bitDepth = 16;
+      
+      const bytesPerSample = bitDepth / 8;
+      const blockAlign = numChannels * bytesPerSample;
+      
+      // Create the buffer for the WAV file
+      const dataLength = buffer.length * numChannels * bytesPerSample;
+      const wavBuffer = new ArrayBuffer(44 + dataLength);
+      const view = new DataView(wavBuffer);
+      
+      // Write the WAV header
+      let offset = 0;
+      
+      // RIFF chunk descriptor
+      writeString(view, offset, "RIFF"); offset += 4;
+      view.setUint32(offset, 36 + dataLength, true); offset += 4;
+      writeString(view, offset, "WAVE"); offset += 4;
+      
+      // fmt sub-chunk
+      writeString(view, offset, "fmt "); offset += 4;
+      view.setUint32(offset, 16, true); offset += 4; // Format chunk length
+      view.setUint16(offset, format, true); offset += 2; // Format type
+      view.setUint16(offset, numChannels, true); offset += 2; // Number of channels
+      view.setUint32(offset, sampleRate, true); offset += 4; // Sample rate
+      view.setUint32(offset, sampleRate * blockAlign, true); offset += 4; // Byte rate
+      view.setUint16(offset, blockAlign, true); offset += 2; // Block align
+      view.setUint16(offset, bitDepth, true); offset += 2; // Bits per sample
+      
+      // data sub-chunk
+      writeString(view, offset, "data"); offset += 4;
+      view.setUint32(offset, dataLength, true); offset += 4;
+      
+      // Write audio data
+      const channelData = buffer.getChannelData(0);
+      for (let i = 0; i < buffer.length; i++) {
+        // Convert float to 16-bit PCM
+        const sample = Math.max(-1, Math.min(1, channelData[i]));
+        const pcm = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, pcm, true);
+        offset += 2;
+      }
+      
+      return new Blob([wavBuffer], { type: "audio/wav" });
+    }
+    
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+    
+    // Download the generated sound as a WAV file
+    function downloadSound() {
+      if (!audioContext) initAudio();
+      
+      const wav = bufferToWav(collectBuffer);
+      const url = URL.createObjectURL(wav);
+      
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "collect.mp3";
+      a.click();
+      
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
+    
+    // Add event listeners
+    document.getElementById("playButton").addEventListener("click", playSound);
+    document.getElementById("downloadButton").addEventListener("click", downloadSound);
+  </script>
+</body>
+</html> 

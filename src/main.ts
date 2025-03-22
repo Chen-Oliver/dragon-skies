@@ -43,7 +43,7 @@ const fireballSystem = new FireballSystem(scene);
 fireballSystem.setLevelSystem(levelSystem);
 
 // Initialize experience orbs system
-const experienceOrbs = new ExperienceOrbs(scene, 150); // Create 150 orbs
+const experienceOrbs = new ExperienceOrbs(scene, camera, 150); // Create 150 orbs
 
 // Game state
 let isGameStarted = false;
@@ -201,40 +201,6 @@ setInterval(() => {
   }
 }, 1000); // Send health update every second
 
-// Add a debug display element
-const debugDisplay = document.createElement('div');
-debugDisplay.style.position = 'absolute';
-debugDisplay.style.bottom = '10px';
-debugDisplay.style.left = '10px';
-debugDisplay.style.backgroundColor = 'rgba(0,0,0,0.7)';
-debugDisplay.style.color = 'white';
-debugDisplay.style.padding = '10px';
-debugDisplay.style.fontFamily = 'monospace';
-debugDisplay.style.zIndex = '1000';
-document.body.appendChild(debugDisplay);
-
-// Function to update the debug display
-function updateDebugDisplay() {
-  if (!debugDisplay) return;
-  
-  const playerCount = otherPlayerDragons.size;
-  let debugText = `Connected players: ${playerCount + 1} (you + ${playerCount} others)<br>`;
-  
-  if (dragon) {
-    debugText += `Your position: ${dragon.body.position.x.toFixed(1)}, ${dragon.body.position.y.toFixed(1)}, ${dragon.body.position.z.toFixed(1)}<br>`;
-  }
-  
-  // Add fireball count to debug info
-  debugText += `Active fireballs: ${fireballSystem.fireballs.length}<br>`;
-  
-  debugText += `<br>Other players:<br>`;
-  otherPlayerDragons.forEach((otherPlayer, playerId) => {
-    const pos = otherPlayer.dragon.body.position;
-    debugText += `${otherPlayer.label.textContent}: ${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}<br>`;
-  });
-  
-  debugDisplay.innerHTML = debugText;
-}
 
 // Handle initial player list
 networkManager.onPlayersInitial((players: PlayerData[]) => {
@@ -2155,7 +2121,7 @@ function animate() {
   collisionFeedback.update();
   
   // Update the debug display
-  updateDebugDisplay();
+  // updateDebugDisplay();
   
   // Every 500 frames (roughly 8-10 seconds), verify dragon objects match player list
   if (currentTime % 8000 < 16) {
