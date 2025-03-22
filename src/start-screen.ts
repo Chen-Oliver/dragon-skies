@@ -28,6 +28,12 @@ export class StartScreen {
     this.container = document.createElement('div');
     this.container.className = 'start-screen';
     
+    // Hide all username labels immediately when constructed
+    const usernameLabels = document.querySelectorAll('.username-label');
+    usernameLabels.forEach(label => {
+      (label as HTMLElement).style.display = 'none';
+    });
+    
     // Create content container
     const content = document.createElement('div');
     content.className = 'start-screen-content';
@@ -353,6 +359,12 @@ export class StartScreen {
   public hide(): void {
     document.body.removeChild(this.container);
     
+    // Show all username labels again when leaving the start screen
+    const usernameLabels = document.querySelectorAll('.username-label');
+    usernameLabels.forEach(label => {
+      (label as HTMLElement).style.display = 'block';
+    });
+    
     // Stop preview animation
     if (this.previewRenderer) {
       this.previewRenderer.dispose();
@@ -361,6 +373,13 @@ export class StartScreen {
   
   public show(): void {
     document.body.appendChild(this.container);
+    
+    // Hide all username labels when the start screen is visible
+    const usernameLabels = document.querySelectorAll('.username-label');
+    usernameLabels.forEach(label => {
+      (label as HTMLElement).style.display = 'none';
+    });
+    
     setTimeout(() => this.usernameInput.focus(), 100);
   }
 }
