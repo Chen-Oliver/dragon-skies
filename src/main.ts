@@ -223,18 +223,48 @@ function updateDebugDisplay() {
 
 // Handle initial player list
 networkManager.onPlayersInitial((players: PlayerData[]) => {
+  console.log('Creating dragons for initial players:', players.length);
+  
+  // Clean up any existing dragons first
+  Array.from(otherPlayerDragons.keys()).forEach(id => {
+    console.log(`Cleaning up existing dragon before initialization: ${id}`);
+    removeOtherPlayerDragon(id);
+  });
+  
   // Create dragons for existing players
-  players.forEach(player => createOtherPlayerDragon(player));
+  players.forEach(player => {
+    // Skip players without positions or who don't have a proper name yet
+    if (!player.position || player.name === 'Unknown Player') {
+      console.log(`Skipping player without position or proper name: ${player.id}`);
+      return;
+    }
+    
+    // Only create if the dragon doesn't already exist
+    if (!otherPlayerDragons.has(player.id)) {
+      createOtherPlayerDragon(player);
+    } else {
+      console.log(`Dragon already exists for player ${player.name} (${player.id})`);
+    }
+  });
+  
+  // Immediately run validation to ensure clean state
+  setTimeout(validateDragonObjects, 100);
 });
 
 // Handle player joining events
 networkManager.onPlayerJoined((player: PlayerData) => {
   console.log(`Another player joined: ${player.name}`);
   
-  // Only create dragons for players who have set their username
-  if (player.name === 'Unknown Player') {
-    console.log('Player has no username yet, not creating dragon');
+  // Only create dragons for players who have set their username and have position data
+  if (player.name === 'Unknown Player' || !player.position) {
+    console.log('Player has no username or position yet, not creating dragon');
     return;
+  }
+  
+  // Remove any existing dragon for this player to prevent duplicates
+  if (otherPlayerDragons.has(player.id)) {
+    console.log(`Removing existing dragon for player ${player.id} before creating a new one`);
+    removeOtherPlayerDragon(player.id);
   }
   
   // Create a dragon for the new player
@@ -247,6 +277,40 @@ networkManager.onPlayerLeft((player: PlayerData) => {
   
   // Remove the player's dragon
   removeOtherPlayerDragon(player.id);
+});
+
+// Add a function to verify all dragons belong to active players
+function validateDragonObjects() {
+  // Get a list of valid player IDs from the network manager
+  const connectedPlayerIds = Array.from(networkManager.getPlayers().keys());
+  
+  // Check for orphaned dragons in the otherPlayerDragons map
+  Array.from(otherPlayerDragons.keys()).forEach(dragonId => {
+    if (!connectedPlayerIds.includes(dragonId)) {
+      console.log(`Found orphaned dragon with ID ${dragonId} - removing it`);
+      removeOtherPlayerDragon(dragonId);
+    }
+  });
+  
+  // Log the state after cleanup for debugging
+  console.log(`After validation: ${otherPlayerDragons.size} dragons for ${connectedPlayerIds.length} connected players`);
+}
+
+// Run validation more frequently to clean up any orphaned dragons
+setInterval(validateDragonObjects, 2000); // Check every 2 seconds
+
+// Immediately run validation to clean up any existing orphaned dragons
+setTimeout(validateDragonObjects, 500); // Run shortly after initialization
+
+// Add disconnect handler for tab close/refresh
+window.addEventListener('beforeunload', () => {
+  // Clean up by disconnecting from the server properly
+  networkManager.disconnect();
+  
+  // Clear all dragons to prevent ghost dragons on reload
+  otherPlayerDragons.forEach((data, id) => {
+    removeOtherPlayerDragon(id);
+  });
 });
 
 // Handle player position updates
@@ -266,172 +330,188 @@ networkManager.onPlayerNameChanged((player: PlayerData) => {
 function createOtherPlayerDragon(player: PlayerData) {
   console.log(`Creating dragon for player with data:`, player);
   
-  // Create a modified version of Dragon that doesn't reset position or clear orbs
-  class RemotePlayerDragon extends Dragon {
-    // Add target position and rotation for interpolation
-    targetPosition: THREE.Vector3 = new THREE.Vector3();
-    targetRotation: THREE.Euler = new THREE.Euler();
-    positionLerpFactor: number = 0.1; // Controls how quickly to move to target position
-    rotationLerpFactor: number = 0.1; // Controls how quickly to rotate to target rotation
-    lastUpdateTime: number = Date.now();
-    
-    // Add health property for other players
-    health: number = 100;
-    maxHealth: number = 100;
-    
-    constructor(size = 1) {
-      super(size);
+  // Validate player data
+  if (!player.id || !player.position || !player.rotation) {
+    console.error(`Cannot create dragon: missing required player data`, player);
+    return;
+  }
+  
+  // Double check we don't already have this dragon
+  if (otherPlayerDragons.has(player.id)) {
+    console.warn(`Attempted to create duplicate dragon for ${player.name} (${player.id})`);
+    return;
+  }
+  
+  try {
+    // Create a modified version of Dragon that doesn't reset position or clear orbs
+    class RemotePlayerDragon extends Dragon {
+      // Add target position and rotation for interpolation
+      targetPosition: THREE.Vector3 = new THREE.Vector3();
+      targetRotation: THREE.Euler = new THREE.Euler();
+      positionLerpFactor: number = 0.1; // Controls how quickly to move to target position
+      rotationLerpFactor: number = 0.1; // Controls how quickly to rotate to target rotation
+      lastUpdateTime: number = Date.now();
       
-      // Remove this dragon from the scene since we'll manually add it in the right position
-      scene.remove(this.body);
+      // Add health property for other players
+      health: number = 100;
+      maxHealth: number = 100;
       
-      // Don't clear orbs - this would cause issues with multiple players
-      // No need to call clearOrbsNearStartPosition
-    }
-    
-    // Method to handle large jumps in position (teleporting)
-    teleportTo(position: THREE.Vector3, rotation: THREE.Euler) {
-      // Immediately set both actual and target position
-      this.body.position.copy(position);
-      this.targetPosition.copy(position);
-      
-      // Immediately set both actual and target rotation
-      this.body.rotation.copy(rotation);
-      this.targetRotation.copy(rotation);
-      
-      // Force matrix update
-      this.body.updateMatrixWorld(true);
-    }
-    
-    // Override update method to handle interpolation
-    update() {
-      const now = Date.now();
-      const timeSinceLastUpdate = now - this.lastUpdateTime;
-      
-      // If it's been more than 5 seconds since last update, dragon might be reappearing after being gone
-      // In that case, we should snap to the target position instead of interpolating
-      if (timeSinceLastUpdate > 5000) {
-        this.body.position.copy(this.targetPosition);
-        this.body.rotation.copy(this.targetRotation);
-        this.lastUpdateTime = now;
-      } else {
-        // Normal interpolation for smooth movement
-        // Interpolate position smoothly
-        this.body.position.lerp(this.targetPosition, this.positionLerpFactor);
+      constructor(size = 1) {
+        super(size);
         
-        // Interpolate rotation smoothly - need to handle Euler rotation differently
-        this.body.rotation.x += (this.targetRotation.x - this.body.rotation.x) * this.rotationLerpFactor;
-        this.body.rotation.y += (this.targetRotation.y - this.body.rotation.y) * this.rotationLerpFactor;
-        this.body.rotation.z += (this.targetRotation.z - this.body.rotation.z) * this.rotationLerpFactor;
+        // Remove this dragon from the scene since we'll manually add it in the right position
+        scene.remove(this.body);
+        
+        // Don't clear orbs - this would cause issues with multiple players
+        // No need to call clearOrbsNearStartPosition
       }
       
-      // Wing flapping animation
-      const time = Date.now() * 0.001;
-      const flapSpeed = 5;
-      const flapAmount = Math.sin(time * flapSpeed) * 0.2 + 0.2;
-      
-      if (this.leftWing) {
-        this.leftWing.rotation.z = flapAmount;
+      // Method to handle large jumps in position (teleporting)
+      teleportTo(position: THREE.Vector3, rotation: THREE.Euler) {
+        // Immediately set both actual and target position
+        this.body.position.copy(position);
+        this.targetPosition.copy(position);
+        
+        // Immediately set both actual and target rotation
+        this.body.rotation.copy(rotation);
+        this.targetRotation.copy(rotation);
+        
+        // Force matrix update
+        this.body.updateMatrixWorld(true);
       }
       
-      if (this.rightWing) {
-        this.rightWing.rotation.z = -flapAmount;
+      // Override update method to handle interpolation
+      update() {
+        const now = Date.now();
+        const timeSinceLastUpdate = now - this.lastUpdateTime;
+        
+        // If it's been more than 5 seconds since last update, dragon might be reappearing after being gone
+        // In that case, we should snap to the target position instead of interpolating
+        if (timeSinceLastUpdate > 5000) {
+          this.body.position.copy(this.targetPosition);
+          this.body.rotation.copy(this.targetRotation);
+          this.lastUpdateTime = now;
+        } else {
+          // Normal interpolation for smooth movement
+          // Interpolate position smoothly
+          this.body.position.lerp(this.targetPosition, this.positionLerpFactor);
+          
+          // Interpolate rotation smoothly - need to handle Euler rotation differently
+          this.body.rotation.x += (this.targetRotation.x - this.body.rotation.x) * this.rotationLerpFactor;
+          this.body.rotation.y += (this.targetRotation.y - this.body.rotation.y) * this.rotationLerpFactor;
+          this.body.rotation.z += (this.targetRotation.z - this.body.rotation.z) * this.rotationLerpFactor;
+        }
+        
+        // Wing flapping animation
+        const time = Date.now() * 0.001;
+        const flapSpeed = 5;
+        const flapAmount = Math.sin(time * flapSpeed) * 0.2 + 0.2;
+        
+        if (this.leftWing) {
+          this.leftWing.rotation.z = flapAmount;
+        }
+        
+        if (this.rightWing) {
+          this.rightWing.rotation.z = -flapAmount;
+        }
+        
+        // Update world matrix
+        this.body.updateMatrixWorld(true);
       }
-      
-      // Update world matrix
-      this.body.updateMatrixWorld(true);
     }
-  }
-  
-  // Create a new Dragon instance with the correct parameters
-  const otherDragon = new RemotePlayerDragon(player.size || 1);
-  
-  // Set initial health if provided
-  if (player.health !== undefined) {
-    otherDragon.health = player.health;
-  }
-  
-  if (player.maxHealth !== undefined) {
-    otherDragon.maxHealth = player.maxHealth;
-  }
-  
-  // Now manually add to scene
-  scene.add(otherDragon.body);
-  
-  // IMPORTANT: Disable frustum culling to ensure updates happen even when off-screen
-  otherDragon.body.traverse((object) => {
-    if (object instanceof THREE.Mesh || object instanceof THREE.Group) {
-      object.frustumCulled = false;
+    
+    // Create a new Dragon instance with the correct parameters
+    const otherDragon = new RemotePlayerDragon(player.size || 1);
+    
+    // Set initial health if provided
+    if (player.health !== undefined) {
+      otherDragon.health = player.health;
     }
-  });
-  
-  // IMPORTANT: Set initial position and rotation if available
-  if (player.position) {
-    otherDragon.body.position.set(
+    
+    if (player.maxHealth !== undefined) {
+      otherDragon.maxHealth = player.maxHealth;
+    }
+    
+    // Now manually add to scene
+    scene.add(otherDragon.body);
+    
+    // IMPORTANT: Disable frustum culling to ensure updates happen even when off-screen
+    otherDragon.body.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.Group) {
+        object.frustumCulled = false;
+      }
+    });
+    
+    // Create initial position and rotation vectors
+    const initialPosition = new THREE.Vector3(
       player.position.x,
       player.position.y,
       player.position.z
     );
-    // Set target position to match initial position
-    otherDragon.targetPosition.copy(otherDragon.body.position);
     
-    console.log(`Set initial position: ${player.position.x}, ${player.position.y}, ${player.position.z}`);
-  }
-  
-  if (player.rotation) {
-    otherDragon.body.rotation.set(
+    const initialRotation = new THREE.Euler(
       player.rotation.x,
       player.rotation.y,
       player.rotation.z
     );
-    // Set target rotation to match initial rotation
-    otherDragon.targetRotation.copy(otherDragon.body.rotation);
     
-    console.log(`Set initial rotation: ${player.rotation.x}, ${player.rotation.y}, ${player.rotation.z}`);
+    // Set initial position directly on the body
+    otherDragon.body.position.copy(initialPosition);
+    otherDragon.targetPosition.copy(initialPosition);
+    
+    // Set initial rotation directly on the body
+    otherDragon.body.rotation.copy(initialRotation);
+    otherDragon.targetRotation.copy(initialRotation);
+    
+    // Log the initial positions
+    console.log(`Set initial position for ${player.name}: ${initialPosition.x.toFixed(2)}, ${initialPosition.y.toFixed(2)}, ${initialPosition.z.toFixed(2)}`);
+    console.log(`Set initial rotation for ${player.name}: ${initialRotation.x.toFixed(2)}, ${initialRotation.y.toFixed(2)}, ${initialRotation.z.toFixed(2)}`);
+    
+    // Ensure the world matrix is updated immediately
+    otherDragon.body.updateMatrixWorld(true);
+    
+    // Create username label
+    const label = document.createElement('div');
+    label.className = 'username-label';
+    label.textContent = player.name || 'Unknown Player'; // Ensure we use the provided name
+    label.style.position = 'absolute';
+    label.style.color = '#FFFF00'; // Make other players' labels yellow to distinguish
+    label.style.transform = 'translateX(-50%)';
+    label.style.zIndex = '1000';
+    document.body.appendChild(label);
+    
+    // Create health bar for other player
+    const healthBarContainer = document.createElement('div');
+    healthBarContainer.className = 'health-bar-container';
+    healthBarContainer.style.position = 'absolute';
+    healthBarContainer.style.width = '60px';
+    healthBarContainer.style.height = '8px';
+    healthBarContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    healthBarContainer.style.borderRadius = '4px';
+    healthBarContainer.style.transform = 'translateX(-50%)';
+    healthBarContainer.style.zIndex = '1000';
+    document.body.appendChild(healthBarContainer);
+    
+    const healthBar = document.createElement('div');
+    healthBar.className = 'health-bar-fill';
+    healthBar.style.width = '100%';
+    healthBar.style.height = '100%';
+    healthBar.style.backgroundColor = '#00FF00';
+    healthBar.style.borderRadius = '4px';
+    healthBarContainer.appendChild(healthBar);
+    
+    // Store the dragon, label and health bar
+    otherPlayerDragons.set(player.id, { 
+      dragon: otherDragon, 
+      label,
+      healthBarContainer,
+      healthBar
+    });
+    
+    console.log(`Successfully created dragon for player ${player.name} (${player.id})`);
+  } catch (error) {
+    console.error(`Failed to create dragon for player ${player.name} (${player.id}):`, error);
   }
-  
-  // Ensure the world matrix is updated immediately
-  otherDragon.body.updateMatrixWorld(true);
-  
-  // Create username label
-  const label = document.createElement('div');
-  label.className = 'username-label';
-  label.textContent = player.name || 'Unknown Player'; // Ensure we use the provided name
-  label.style.position = 'absolute';
-  label.style.color = '#FFFF00'; // Make other players' labels yellow to distinguish
-  label.style.transform = 'translateX(-50%)';
-  label.style.zIndex = '1000';
-  document.body.appendChild(label);
-  
-  // Create health bar for other player
-  const healthBarContainer = document.createElement('div');
-  healthBarContainer.className = 'health-bar-container';
-  healthBarContainer.style.position = 'absolute';
-  healthBarContainer.style.width = '60px';
-  healthBarContainer.style.height = '8px';
-  healthBarContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-  healthBarContainer.style.borderRadius = '4px';
-  healthBarContainer.style.transform = 'translateX(-50%)';
-  healthBarContainer.style.zIndex = '1000';
-  document.body.appendChild(healthBarContainer);
-  
-  const healthBar = document.createElement('div');
-  healthBar.className = 'health-bar-fill';
-  healthBar.style.width = '100%';
-  healthBar.style.height = '100%';
-  healthBar.style.backgroundColor = '#00FF00';
-  healthBar.style.borderRadius = '4px';
-  healthBarContainer.appendChild(healthBar);
-  
-  // Store the dragon, label and health bar
-  otherPlayerDragons.set(player.id, { 
-    dragon: otherDragon, 
-    label,
-    healthBarContainer,
-    healthBar
-  });
-  
-  console.log(`Created dragon for player ${player.name} (${player.id})`); // Add debug log
 }
 
 // Update the position and rotation of another player's dragon
@@ -533,22 +613,67 @@ function updateOtherPlayerDragon(player: PlayerData) {
 
 // Remove another player's dragon
 function removeOtherPlayerDragon(playerId: string) {
+  console.log(`Attempting to remove dragon for player: ${playerId}`);
+  
   const otherPlayer = otherPlayerDragons.get(playerId);
-  if (!otherPlayer) return;
-  
-  // Remove the dragon from the scene
-  scene.remove(otherPlayer.dragon.body);
-  
-  // Remove the username label
-  document.body.removeChild(otherPlayer.label);
-  
-  // Remove health bar
-  if (otherPlayer.healthBarContainer) {
-    document.body.removeChild(otherPlayer.healthBarContainer);
+  if (!otherPlayer) {
+    console.log(`No dragon found for player ${playerId}`);
+    return;
   }
   
-  // Remove from the map
-  otherPlayerDragons.delete(playerId);
+  try {
+    // Remove the dragon from the scene
+    if (otherPlayer.dragon && otherPlayer.dragon.body) {
+      // Dispose of all geometries and materials to free up memory
+      otherPlayer.dragon.body.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
+      
+      // Remove from scene
+      scene.remove(otherPlayer.dragon.body);
+      console.log(`Removed dragon body from scene for player ${playerId}`);
+    } else {
+      console.warn(`Dragon body for player ${playerId} was null or undefined`);
+    }
+    
+    // Remove the username label
+    if (otherPlayer.label && document.body.contains(otherPlayer.label)) {
+      document.body.removeChild(otherPlayer.label);
+      console.log(`Removed username label for player ${playerId}`);
+    } else {
+      console.warn(`Username label for player ${playerId} was not in the DOM`);
+    }
+    
+    // Remove health bar
+    if (otherPlayer.healthBarContainer && document.body.contains(otherPlayer.healthBarContainer)) {
+      document.body.removeChild(otherPlayer.healthBarContainer);
+      console.log(`Removed health bar for player ${playerId}`);
+    } else {
+      console.warn(`Health bar for player ${playerId} was not in the DOM`);
+    }
+    
+    // Remove from the map
+    otherPlayerDragons.delete(playerId);
+    console.log(`Removed player ${playerId} from otherPlayerDragons map (${otherPlayerDragons.size} dragons remaining)`);
+  } catch (error) {
+    console.error(`Error removing dragon for player ${playerId}:`, error);
+    
+    // Force removal from the map even if there was an error in cleanup
+    otherPlayerDragons.delete(playerId);
+    console.log(`Forcefully removed player ${playerId} from map after error`);
+  }
 }
 
 // Start the game when the player enters a username
@@ -1775,6 +1900,11 @@ function animate() {
   // Update the debug display
   updateDebugDisplay();
   
+  // Every 500 frames (roughly 8-10 seconds), verify dragon objects match player list
+  if (currentTime % 8000 < 16) {
+    validateDragonObjects();
+  }
+  
   // Only run game logic if the game has started
   if (isGameStarted && dragon) {
     // Update dragon physics and animations
@@ -1806,8 +1936,19 @@ function animate() {
       usernameLabel.style.top = `${y}px`;
     }
     
+    // Get current player IDs from network manager
+    const connectedPlayerIds = Array.from(networkManager.getPlayers().keys());
+    
     // Update other players' dragons and username labels
     otherPlayerDragons.forEach((otherPlayer, playerId) => {
+      // Verify player still exists in the network manager's player list
+      if (!connectedPlayerIds.includes(playerId)) {
+        // Found a ghost dragon - remove it
+        console.log(`Found ghost dragon for player ${playerId} during render loop - removing`);
+        removeOtherPlayerDragon(playerId);
+        return; // Skip rest of processing for this dragon
+      }
+      
       // Call the update method to perform interpolation
       otherPlayer.dragon.update();
       

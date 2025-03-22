@@ -148,6 +148,9 @@ export class NetworkManager {
       if (this.onPlayerLeftCallback) {
         this.onPlayerLeftCallback(player);
       }
+      
+      // Log the current player count after removal
+      console.log(`Players remaining after ${player.name} left: ${this.players.size}`);
     });
     
     // Handle player name changes
@@ -317,6 +320,42 @@ export class NetworkManager {
       // Call respawn callback if registered
       if (this.onPlayerRespawnCallback) {
         this.onPlayerRespawnCallback(data);
+      }
+    });
+    
+    // Add a periodic validation check to synchronize players
+    setInterval(() => {
+      // Request the current player list from the server
+      this.socket.emit('players:validate');
+    }, 10000); // Every 10 seconds
+    
+    // Handle the validation response
+    this.socket.on('players:validation', (serverPlayers: PlayerData[]) => {
+      console.log('Received player validation from server');
+      
+      // Get server player IDs
+      const serverPlayerIds = serverPlayers.map(p => p.id);
+      
+      // Find players we have that are no longer on the server
+      const ourPlayerIds = Array.from(this.players.keys());
+      const stalePlayerIds = ourPlayerIds.filter(id => !serverPlayerIds.includes(id));
+      
+      // Remove any stale players
+      stalePlayerIds.forEach(id => {
+        const stalePlayer = this.players.get(id);
+        console.log(`Removing stale player: ${stalePlayer?.name || 'Unknown'} (${id})`);
+        this.players.delete(id);
+        
+        // Call the left callback for each stale player
+        if (this.onPlayerLeftCallback && stalePlayer) {
+          this.onPlayerLeftCallback(stalePlayer);
+        }
+      });
+      
+      // Update our UI if any players were removed
+      if (stalePlayerIds.length > 0) {
+        this.updatePlayerListUI();
+        console.log(`Removed ${stalePlayerIds.length} stale players during validation`);
       }
     });
   }

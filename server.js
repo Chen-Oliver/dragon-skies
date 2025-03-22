@@ -97,6 +97,35 @@ io.on('connection', (socket) => {
           health: playerData.health,
           maxHealth: playerData.maxHealth
         });
+        
+        // Send this player information about other already named players
+        // This ensures two-way visibility between all named players
+        const existingNamedPlayers = Array.from(players.entries())
+          .filter(([id]) => id !== playerId)
+          .filter(([, player]) => player.name !== 'Unknown Player')
+          .map(([, data]) => ({
+            id: data.id,
+            name: data.name,
+            position: data.position,
+            rotation: data.rotation,
+            size: data.size,
+            health: data.health || 100,
+            maxHealth: data.maxHealth || 100
+          }));
+          
+        if (existingNamedPlayers.length > 0) {
+          console.log(`Sending missed players to newly named player ${name}:`, existingNamedPlayers);
+          socket.emit('players:initial', existingNamedPlayers);
+          
+          // Also send individual health updates
+          existingNamedPlayers.forEach(player => {
+            socket.emit('player:healthUpdate', {
+              playerId: player.id,
+              health: player.health,
+              maxHealth: player.maxHealth
+            });
+          });
+        }
       } else {
         // Otherwise just broadcast the name change
         io.emit('player:nameChanged', {
@@ -309,6 +338,26 @@ io.on('connection', (socket) => {
         name: playerName
       });
     }
+  });
+
+  // Handle players:validate request
+  socket.on('players:validate', () => {
+    // Return only named players (those that have completed setup)
+    const activePlayers = Array.from(players.entries())
+      .filter(([_, player]) => player.name !== 'Unknown Player')
+      .map(([_, player]) => ({
+        id: player.id,
+        name: player.name,
+        position: player.position,
+        rotation: player.rotation,
+        size: player.size,
+        health: player.health || 100,
+        maxHealth: player.maxHealth || 100
+      }));
+    
+    // Send current player list back to the requesting client
+    socket.emit('players:validation', activePlayers);
+    console.log(`Sent player validation to ${playerId} with ${activePlayers.length} active players`);
   });
 });
 
