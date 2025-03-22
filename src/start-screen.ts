@@ -242,7 +242,7 @@ export class StartScreen {
     this.previewDragon = DragonModelCreator.createDragonModel(this.selectedColor, 1);
     
     // Position and rotate for better view
-    this.previewDragon.rotation.y = Math.PI; // Face forward
+    this.previewDragon.rotation.y = 0; // Face the user (0 instead of Math.PI)
     this.previewDragon.position.y = -0.3; // Slightly higher in the zoomed view
     
     // Add to preview scene
