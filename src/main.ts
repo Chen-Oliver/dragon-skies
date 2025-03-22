@@ -9,6 +9,7 @@ import { StartScreen } from './start-screen'
 import { NetworkManager, PlayerData } from './network-manager'
 import { DragonColorType, DragonColors, DefaultDragonColor } from './dragon'
 import { PointerLockControlsCannon } from './PointerLockControlsCannon'
+import { notificationSystem } from './notification-system'
 
 // Polyfill for requestAnimationFrame to ensure it continues in background
 // This will help maintain position updates even when tab isn't active
@@ -242,6 +243,9 @@ networkManager.onPlayerJoined((player: PlayerData) => {
     return;
   }
   
+  // Show notification that player joined
+  notificationSystem.notifyJoin(player.name, player.dragonColor);
+  
   // Remove any existing dragon for this player to prevent duplicates
   if (otherPlayerDragons.has(player.id)) {
     console.log(`Removing existing dragon for player ${player.id} before creating a new one`);
@@ -255,6 +259,9 @@ networkManager.onPlayerJoined((player: PlayerData) => {
 // Handle player leaving events
 networkManager.onPlayerLeft((player: PlayerData) => {
   console.log(`Player left: ${player.name}`);
+  
+  // Show notification that player left
+  notificationSystem.notifyLeave(player.name);
   
   // Remove the player's dragon
   removeOtherPlayerDragon(player.id);
@@ -2227,20 +2234,8 @@ function handlePlayerDeath() {
   
   animateExplosion();
   
-  // Add death message
-  const deathMessage = document.createElement('div');
-  deathMessage.className = 'death-message';
-  deathMessage.innerHTML = 'You Died!<br>Respawning...';
-  deathMessage.style.position = 'absolute';
-  deathMessage.style.top = '50%';
-  deathMessage.style.left = '50%';
-  deathMessage.style.transform = 'translate(-50%, -50%)';
-  deathMessage.style.color = '#FF0000';
-  deathMessage.style.fontSize = '32px';
-  deathMessage.style.fontWeight = 'bold';
-  deathMessage.style.textShadow = '0 0 10px #FF0000';
-  deathMessage.style.textAlign = 'center';
-  document.body.appendChild(deathMessage);
+  // Use notification system instead of center death message
+  notificationSystem.notifyPlayerDeath(playerUsername);
   
   // Respawn after a delay
   setTimeout(() => {
@@ -2255,9 +2250,6 @@ function handlePlayerDeath() {
     
     // Show dragon again
     dragon.body.visible = true;
-    
-    // Remove death message
-    document.body.removeChild(deathMessage);
     
     // Remove death light
     scene.remove(deathExplosion);

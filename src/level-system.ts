@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { HUD } from './hud';
+import { notificationSystem } from './notification-system';
 
 // Level thresholds for XP - scaling up more steeply
 export const LEVEL_THRESHOLDS = [
@@ -91,19 +92,25 @@ export class LevelSystem {
     const oldLevel = this.level;
     this.level = newLevel;
     
-    // Update stats based on level
+    // Update stats based on new level
     const newStats = this.getStatsForLevel(newLevel);
     this.stats = {
       ...newStats,
       currentHealth: newStats.maxHealth // Heal to full on level up
     };
     
-    // Add a subtle level up indication
-    this.hud.pulseLevel();
+    // Update HUD
+    this.updateHUD();
     
-    // Level up notification disabled
-    // this.showLevelUpNotification();
-    // this.showLevelUpBenefits(oldLevel, newLevel);
+    // Play level up sound
+    // Add a subtle level up indication
+    this.showLevelUpEffects();
+    
+    // Use notification system for level up notification
+    notificationSystem.notifyLevelUp("You", newLevel);
+    
+    // Show benefits
+    this.showLevelUpBenefits(oldLevel, newLevel);
   }
   
   /**
@@ -252,5 +259,13 @@ export class LevelSystem {
     // 
     // // Show the benefits
     // this.hud.showLevelUpText(benefitsText);
+  }
+
+  // Add a new method for level up effects
+  private showLevelUpEffects(): void {
+    // Pulse the level display
+    this.hud.pulseLevel();
+    
+    // Add any other visual/audio effects for level up here
   }
 } 

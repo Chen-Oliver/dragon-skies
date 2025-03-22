@@ -1,6 +1,7 @@
 import socketIOClient from "socket.io-client";
 import * as THREE from 'three';
 import { DragonColorType, DefaultDragonColor } from "./dragon";
+import { notificationSystem } from './notification-system';
 
 // Define types for player data
 export interface PlayerData {
@@ -835,29 +836,7 @@ export class NetworkManager {
   
   // Show kill notification in UI
   private showKillNotification(killerName: string, targetName: string) {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = 'kill-notification';
-    notification.textContent = `${killerName} defeated ${targetName}!`;
-    notification.style.position = 'absolute';
-    notification.style.top = '20%';
-    notification.style.left = '50%';
-    notification.style.transform = 'translateX(-50%)';
-    notification.style.color = '#FF4444';
-    notification.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    notification.style.padding = '10px 20px';
-    notification.style.borderRadius = '5px';
-    notification.style.fontFamily = 'Arial, sans-serif';
-    notification.style.fontSize = '20px';
-    notification.style.fontWeight = 'bold';
-    notification.style.zIndex = '2000';
-    notification.style.textShadow = '0 0 5px #FF0000';
-    document.body.appendChild(notification);
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-      document.body.removeChild(notification);
-    }, 3000);
+    notificationSystem.notifyKill(killerName, targetName);
   }
   
   public onServerStatusChange(callback: (isAvailable: boolean) => void) {
