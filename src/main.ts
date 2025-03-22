@@ -2142,6 +2142,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('keyup', (e) => {
+  // Allow key releases even when dead (to prevent keys getting "stuck")
   switch (e.key.toLowerCase()) {
     case 'w': keys.w = false; break;
     case 'a': keys.a = false; break;
@@ -2196,6 +2197,9 @@ function handlePlayerDeath() {
   if (!dragon) return;
   
   console.log('Player died!');
+  
+  // Set player as dead immediately to prevent movement and shooting
+  isPlayerDead = true;
   
   // Make sure dragon's materials are restored if it was flashing
   restoreDragonMaterials(dragon);
@@ -2291,10 +2295,20 @@ function animate() {
     validateDragonObjects();
   }
   
-  // Only run game logic if the game has started
+  // Only run game logic if the game has started and player is not dead
   if (isGameStarted && dragon) {
-    // Update dragon physics and animations
+    // Check if dragon exists and player is not dead before processing movement
     if (!isPlayerDead) {
+      // Process movement inputs
+      const moveSpeed = 0.015;
+      dragon.targetVelocity.set(0, 0, 0);
+      
+      if (keys.w) dragon.targetVelocity.z -= moveSpeed;
+      if (keys.s) dragon.targetVelocity.z += moveSpeed;
+      if (keys.a) dragon.targetVelocity.x -= moveSpeed;
+      if (keys.d) dragon.targetVelocity.x += moveSpeed;
+      
+      // Apply the movement to the dragon
       dragon.update();
       
       // Update boundary visualization based on dragon position
