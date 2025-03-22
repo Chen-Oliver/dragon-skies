@@ -1934,6 +1934,9 @@ const keys = {
   space: false
 };
 
+// Track when the last fireball was shot for continuous firing
+let lastFireballTime = 0;
+
 // Setup controls
 window.addEventListener('keydown', (e) => {
   // Don't process any inputs while player is dead
@@ -1946,7 +1949,9 @@ window.addEventListener('keydown', (e) => {
     case 'd': keys.d = true; break;
     case ' ': 
       keys.space = true; 
-      if (dragon) {
+      // Only fire immediately on initial press, continuous firing handled in animate loop
+      if (dragon && Date.now() - lastFireballTime > fireballSystem.cooldown) {
+        lastFireballTime = Date.now();
         dragon.shootFireball();
       }
       break;
@@ -2116,6 +2121,14 @@ function animate() {
   const deltaTime = (currentTime - lastFrameTime) / 1000; // Convert to seconds
   lastFrameTime = currentTime;
   
+  // Handle continuous fireball shooting while space is held down
+  if (keys.space && dragon && !isPlayerDead) {
+    if (currentTime - lastFireballTime > fireballSystem.cooldown) {
+      lastFireballTime = currentTime;
+      dragon.shootFireball();
+    }
+  }
+  
   // Update basic animations regardless of game state
   experienceOrbs.update();
   collisionFeedback.update();
@@ -2144,102 +2157,102 @@ function animate() {
         dragon.size
       );
     }
-    
-    // Update username position above dragon
-    if (usernameLabel && dragon.body.visible) {
-      const dragonScreenPos = new THREE.Vector3();
-      dragonScreenPos.setFromMatrixPosition(dragon.body.matrixWorld);
-      dragonScreenPos.project(camera);
-      
-      const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
-      
-      usernameLabel.style.transform = `translate(-50%, -100%)`;
-      usernameLabel.style.left = `${x}px`;
-      usernameLabel.style.top = `${y}px`;
-    }
-    
-    // Get current player IDs from network manager
-    const connectedPlayerIds = Array.from(networkManager.getPlayers().keys());
-    
-    // Update other players' dragons and username labels
-    otherPlayerDragons.forEach((otherPlayer, playerId) => {
-      // Verify player still exists in the network manager's player list
-      if (!connectedPlayerIds.includes(playerId)) {
-        // Found a ghost dragon - remove it
-        console.log(`Found ghost dragon for player ${playerId} during render loop - removing`);
-        removeOtherPlayerDragon(playerId);
-        return; // Skip rest of processing for this dragon
-      }
-      
-      // Call the update method to perform interpolation
-      otherPlayer.dragon.update();
-      
-      // Update label position
-      const dragonScreenPos = new THREE.Vector3();
-      dragonScreenPos.setFromMatrixPosition(otherPlayer.dragon.body.matrixWorld);
-      dragonScreenPos.project(camera);
-      
-      // Calculate screen position
-      const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
-      
-      // Check if the player is on screen (with some margin)
-      const isOnScreen = 
-        dragonScreenPos.x > -1.2 && dragonScreenPos.x < 1.2 && 
-        dragonScreenPos.y > -1.2 && dragonScreenPos.y < 1.2 &&
-        dragonScreenPos.z < 1;
-      
-      // Only show label if on screen
-      otherPlayer.label.style.display = isOnScreen ? 'block' : 'none';
-      
-      if (isOnScreen) {
-        otherPlayer.label.style.transform = `translate(-50%, -100%)`;
-        otherPlayer.label.style.left = `${x}px`;
-        otherPlayer.label.style.top = `${y}px`;
-        
-        // Position health bar below username
-        if (otherPlayer.healthBarContainer) {
-          otherPlayer.healthBarContainer.style.display = 'block';
-          otherPlayer.healthBarContainer.style.left = `${x}px`;
-          otherPlayer.healthBarContainer.style.top = `${y + 25}px`;
-        }
-      } else if (otherPlayer.healthBarContainer) {
-        otherPlayer.healthBarContainer.style.display = 'none';
-      }
-    });
+  }
   
-    // Update camera
-    followCamera();
+  // Update username position above dragon
+  if (usernameLabel && dragon.body.visible) {
+    const dragonScreenPos = new THREE.Vector3();
+    dragonScreenPos.setFromMatrixPosition(dragon.body.matrixWorld);
+    dragonScreenPos.project(camera);
     
-    // Update fireballs with deltaTime for consistent movement
-    fireballSystem.update(deltaTime);
+    const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
+    
+    usernameLabel.style.transform = `translate(-50%, -100%)`;
+    usernameLabel.style.left = `${x}px`;
+    usernameLabel.style.top = `${y}px`;
+  }
   
-    // Check for dragon collision with orbs
-    const collectedCount = experienceOrbs.checkCollisions(dragon.body.position, 2);
-    
-    // If orbs were collected, add experience and show feedback
-    if (collectedCount > 0) {
-      // Add exactly 10 XP per orb
-      const expGained = collectedCount * 10;
-      levelSystem.addExperience(expGained);
+  // Get current player IDs from network manager
+  const connectedPlayerIds = Array.from(networkManager.getPlayers().keys());
+  
+  // Update other players' dragons and username labels
+  otherPlayerDragons.forEach((otherPlayer, playerId) => {
+    // Verify player still exists in the network manager's player list
+    if (!connectedPlayerIds.includes(playerId)) {
+      // Found a ghost dragon - remove it
+      console.log(`Found ghost dragon for player ${playerId} during render loop - removing`);
+      removeOtherPlayerDragon(playerId);
+      return; // Skip rest of processing for this dragon
     }
     
-    // Check fireball collisions with environment objects
-    const environmentObjects = environment ? environment.getCollisionObjects() : [];
+    // Call the update method to perform interpolation
+    otherPlayer.dragon.update();
     
-    // Check fireball collisions with environment, and other players only (no enemies)
-    const fireballXP = fireballSystem.checkCollisions(
-      environmentObjects, 
-      [], // Empty array instead of enemySystem.enemies
-      otherPlayerDragons,
-      networkManager
-    );
+    // Update label position
+    const dragonScreenPos = new THREE.Vector3();
+    dragonScreenPos.setFromMatrixPosition(otherPlayer.dragon.body.matrixWorld);
+    dragonScreenPos.project(camera);
     
-    // Add experience from fireball kills
-    if (fireballXP > 0) {
-      levelSystem.addExperience(fireballXP);
+    // Calculate screen position
+    const x = (dragonScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-(dragonScreenPos.y * 0.5) + 0.5) * window.innerHeight - 50;
+    
+    // Check if the player is on screen (with some margin)
+    const isOnScreen = 
+      dragonScreenPos.x > -1.2 && dragonScreenPos.x < 1.2 && 
+      dragonScreenPos.y > -1.2 && dragonScreenPos.y < 1.2 &&
+      dragonScreenPos.z < 1;
+    
+    // Only show label if on screen
+    otherPlayer.label.style.display = isOnScreen ? 'block' : 'none';
+    
+    if (isOnScreen) {
+      otherPlayer.label.style.transform = `translate(-50%, -100%)`;
+      otherPlayer.label.style.left = `${x}px`;
+      otherPlayer.label.style.top = `${y}px`;
+      
+      // Position health bar below username
+      if (otherPlayer.healthBarContainer) {
+        otherPlayer.healthBarContainer.style.display = 'block';
+        otherPlayer.healthBarContainer.style.left = `${x}px`;
+        otherPlayer.healthBarContainer.style.top = `${y + 25}px`;
+      }
+    } else if (otherPlayer.healthBarContainer) {
+      otherPlayer.healthBarContainer.style.display = 'none';
     }
+  });
+  
+  // Update camera
+  followCamera();
+  
+  // Update fireballs with deltaTime for consistent movement
+  fireballSystem.update(deltaTime);
+  
+  // Check for dragon collision with orbs
+  const collectedCount = experienceOrbs.checkCollisions(dragon.body.position, 2);
+  
+  // If orbs were collected, add experience and show feedback
+  if (collectedCount > 0) {
+    // Add exactly 10 XP per orb
+    const expGained = collectedCount * 10;
+    levelSystem.addExperience(expGained);
+  }
+  
+  // Check fireball collisions with environment objects
+  const environmentObjects = environment ? environment.getCollisionObjects() : [];
+  
+  // Check fireball collisions with environment, and other players only (no enemies)
+  const fireballXP = fireballSystem.checkCollisions(
+    environmentObjects, 
+    [], // Empty array instead of enemySystem.enemies
+    otherPlayerDragons,
+    networkManager
+  );
+  
+  // Add experience from fireball kills
+  if (fireballXP > 0) {
+    levelSystem.addExperience(fireballXP);
   }
   
   // Always render the scene

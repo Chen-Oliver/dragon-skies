@@ -379,7 +379,7 @@ export class Fireball {
 export class FireballSystem {
   scene: THREE.Scene;
   fireballs: Fireball[] = [];
-  cooldown: number = 380; // ms between shots - keep original cooldown
+  cooldown: number = 100;
   lastFireTime: number = 0;
   levelSystem: LevelSystem;
   
