@@ -88,6 +88,10 @@ networkManager.onPlayerDamage((data) => {
     // Visual feedback
     collisionFeedback.startCameraShake(0.15, 300);
     collisionFeedback.createCollisionParticles(dragon.body.position, 0xff0000);
+    collisionFeedback.createDamageText(dragon.body.position, data.damage);
+    
+    // Make dragon flash red
+    flashDragonRed(dragon);
     
     // Check if this damage killed us
     if (levelSystem.getStats().currentHealth <= 0) {
@@ -128,7 +132,12 @@ networkManager.onPlayerHealthUpdated((playerId, health, maxHealth) => {
       
       // If health decreased, show damage effect
       if (health < oldHealth) {
+        const damageTaken = oldHealth - health;
         collisionFeedback.createCollisionParticles(remotePlayerDragon.body.position, 0xff0000);
+        collisionFeedback.createDamageText(remotePlayerDragon.body.position, damageTaken);
+        
+        // Make dragon flash red
+        flashDragonRed(remotePlayerDragon);
       }
     }
   }
@@ -140,6 +149,9 @@ networkManager.onPlayerRespawn((data) => {
   
   // Reset local player
   if (dragon) {
+    // Ensure materials are reset to normal
+    restoreDragonMaterials(dragon);
+    
     // Reset health
     levelSystem.updateHealth(data.health);
     
@@ -622,6 +634,11 @@ function removeOtherPlayerDragon(playerId: string) {
   }
   
   try {
+    // Reset materials first if the dragon was flashing when removed
+    if (otherPlayer.dragon) {
+      restoreDragonMaterials(otherPlayer.dragon);
+    }
+    
     // Remove the dragon from the scene
     if (otherPlayer.dragon && otherPlayer.dragon.body) {
       // Dispose of all geometries and materials to free up memory
@@ -777,10 +794,17 @@ class CollisionFeedback {
     startTime: number;
     originalPosition: THREE.Vector3;
   };
+  damageTexts: {
+    element: HTMLElement;
+    position: THREE.Vector3;
+    startTime: number;
+    duration: number;
+  }[];
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.particles = [];
+    this.damageTexts = [];
     this.cameraShake = {
       active: false,
       intensity: 0,
@@ -901,9 +925,72 @@ class CollisionFeedback {
     // We'll modify the camera's target position in the followCamera function
   }
   
+  createDamageText(position: THREE.Vector3, damage: number) {
+    // Create a new HTML element for the damage text
+    const damageText = document.createElement('div');
+    damageText.className = 'damage-text';
+    damageText.textContent = `-${damage}`;
+    
+    // Add a slight randomness to the position to avoid overlapping
+    const offset = Math.random() * 1 - 0.5;
+    
+    // Position it at the 3D position
+    damageText.style.position = 'absolute';
+    damageText.style.color = '#ff3333';
+    damageText.style.fontWeight = 'bold';
+    damageText.style.fontSize = '24px';
+    damageText.style.textShadow = '0px 0px 3px #000000';
+    damageText.style.pointerEvents = 'none';
+    damageText.style.userSelect = 'none';
+    damageText.style.zIndex = '1000';
+    
+    // Add to document
+    document.body.appendChild(damageText);
+    
+    // Store for animation
+    this.damageTexts.push({
+      element: damageText,
+      position: new THREE.Vector3(position.x + offset, position.y + 2, position.z),
+      startTime: Date.now(),
+      duration: 1500
+    });
+  }
+  
+  updateDamageTexts() {
+    const now = Date.now();
+    
+    // Update position of damage texts
+    for (let i = this.damageTexts.length - 1; i >= 0; i--) {
+      const damageText = this.damageTexts[i];
+      const elapsed = now - damageText.startTime;
+      
+      // Remove if duration has passed
+      if (elapsed > damageText.duration) {
+        document.body.removeChild(damageText.element);
+        this.damageTexts.splice(i, 1);
+        continue;
+      }
+      
+      // Progress as a value from 0 to 1
+      const progress = elapsed / damageText.duration;
+      
+      // Move upward as it fades
+      damageText.position.y += 0.03;
+      
+      // Fade out
+      damageText.element.style.opacity = (1 - progress).toString();
+      
+      // Update screen position
+      const screenPosition = toScreenPosition(damageText.position, camera);
+      damageText.element.style.left = `${screenPosition.x}px`;
+      damageText.element.style.top = `${screenPosition.y}px`;
+    }
+  }
+  
   update() {
     this.updateParticles();
     this.updateCameraShake();
+    this.updateDamageTexts();
   }
 }
 
@@ -1864,10 +1951,12 @@ const followCamera = () => {
 function handlePlayerDeath() {
   if (!dragon) return;
   
-  // Set player as dead
-  isPlayerDead = true;
+  console.log('Player died!');
   
-  // Make dragon invisible
+  // Make sure dragon's materials are restored if it was flashing
+  restoreDragonMaterials(dragon);
+  
+  // Hide the dragon
   dragon.body.visible = false;
   
   // Create death explosion
@@ -2106,3 +2195,83 @@ function startAnimation() {
 
 // Start the animation when the page loads
 startAnimation();
+
+// Helper function to convert 3D position to screen position
+function toScreenPosition(position: THREE.Vector3, camera: THREE.Camera) {
+  const vector = position.clone();
+  vector.project(camera);
+  
+  const widthHalf = window.innerWidth / 2;
+  const heightHalf = window.innerHeight / 2;
+  
+  return {
+    x: (vector.x * widthHalf) + widthHalf,
+    y: -(vector.y * heightHalf) + heightHalf
+  };
+}
+
+// Function to make a dragon flash red when taking damage
+function flashDragonRed(dragonObj: any) {
+  // Skip if dragon doesn't exist or is already dead
+  if (!dragonObj || !dragonObj.body) {
+    return;
+  }
+  
+  // Track if this dragon already has a flash in progress
+  if (dragonObj.isFlashing) {
+    return;
+  }
+  
+  // Mark dragon as currently flashing
+  dragonObj.isFlashing = true;
+  
+  // Store original materials
+  dragonObj.originalMaterials = [];
+  
+  // Apply red material to all body parts
+  dragonObj.body.traverse((child: THREE.Object3D) => {
+    if (child instanceof THREE.Mesh && child.material) {
+      // Store original material
+      dragonObj.originalMaterials.push({
+        mesh: child,
+        material: child.material
+      });
+      
+      // Create red material with emissive properties to make it glow
+      const redMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 0.5,
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      // Replace with red material
+      child.material = redMaterial;
+    }
+  });
+  
+  // Restore original materials after a short time (300ms)
+  setTimeout(() => {
+    restoreDragonMaterials(dragonObj);
+  }, 300);
+}
+
+// Function to restore dragon materials safely
+function restoreDragonMaterials(dragonObj: any) {
+  // Skip if dragon doesn't exist or has no materials to restore
+  if (!dragonObj || !dragonObj.body || !dragonObj.originalMaterials) {
+    return;
+  }
+  
+  // Restore original materials
+  dragonObj.originalMaterials.forEach((item: {mesh: THREE.Mesh, material: THREE.Material}) => {
+    if (item.mesh) {
+      item.mesh.material = item.material;
+    }
+  });
+  
+  // Clear the materials array and reset flashing flag
+  dragonObj.originalMaterials = [];
+  dragonObj.isFlashing = false;
+}
