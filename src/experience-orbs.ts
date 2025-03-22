@@ -137,35 +137,27 @@ export class ExperienceOrbs {
   
   // Create a visual effect when collecting an orb
   createCollectionEffect(position: THREE.Vector3) {
-    // Create particle burst animation
-    const particleCount = 20;
+    // Create particle burst animation - simple dust poof
+    const particleCount = 15;
     const particleGeometry = new THREE.BufferGeometry();
     const particlePositions = new Float32Array(particleCount * 3);
     const particleSizes = new Float32Array(particleCount);
     const particleColors = new Float32Array(particleCount * 3);
     
-    // Setup particles around collection point
+    // Initial positions - tight cluster at collection point
     for (let i = 0; i < particleCount; i++) {
-      // Random position within a small sphere
-      const offset = new THREE.Vector3(
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2
-      ).normalize().multiplyScalar(Math.random() * 0.5);
+      // Start with particles very close to the collection point
+      particlePositions[i * 3] = position.x + (Math.random() - 0.5) * 0.2;
+      particlePositions[i * 3 + 1] = position.y + (Math.random() - 0.5) * 0.2;
+      particlePositions[i * 3 + 2] = position.z + (Math.random() - 0.5) * 0.2;
       
-      const pos = position.clone().add(offset);
+      // Varying sizes for dust-like appearance
+      particleSizes[i] = Math.random() * 0.15 + 0.05;
       
-      particlePositions[i * 3] = pos.x;
-      particlePositions[i * 3 + 1] = pos.y;
-      particlePositions[i * 3 + 2] = pos.z;
-      
-      // Random sizes (slightly smaller than the orb)
-      particleSizes[i] = Math.random() * 0.3 + 0.1;
-      
-      // Colors derived from the orb color but with slight variations
-      particleColors[i * 3] = 0; // R: cyan base
-      particleColors[i * 3 + 1] = 0.8 + Math.random() * 0.2; // G: slight variation
-      particleColors[i * 3 + 2] = 0.8 + Math.random() * 0.2; // B: slight variation
+      // Yellow/gold dust colors
+      particleColors[i * 3] = 1.0; // R: full red
+      particleColors[i * 3 + 1] = 0.85 + Math.random() * 0.15; // G: high green for gold
+      particleColors[i * 3 + 2] = 0.2 + Math.random() * 0.3; // B: low-medium blue for gold
     }
     
     particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
@@ -173,9 +165,9 @@ export class ExperienceOrbs {
     particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
     
     const particleMaterial = new THREE.PointsMaterial({
-      size: 0.3,
+      size: 0.2,
       transparent: true,
-      opacity: 1.0,
+      opacity: 0.9,
       vertexColors: true,
       blending: THREE.AdditiveBlending,
       sizeAttenuation: true
@@ -184,9 +176,15 @@ export class ExperienceOrbs {
     const particles = new THREE.Points(particleGeometry, particleMaterial);
     this.scene.add(particles);
     
-    // Animate the particles expanding outward
+    // Very brief animation
     const startTime = Date.now();
-    const duration = 500; // Animation duration in ms
+    const duration = 250; // Very short animation
+    
+    // Store initial positions for reference
+    const initialPositions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particlePositions.length; i++) {
+      initialPositions[i] = particlePositions[i];
+    }
     
     const animateParticles = () => {
       const elapsed = Date.now() - startTime;
@@ -201,52 +199,55 @@ export class ExperienceOrbs {
       // Progress from 0 to 1
       const progress = elapsed / duration;
       
-      // Move particles outward and upward
+      // Simple expansion - particles move slightly away from center in all directions
+      // But not in a directed "trail" pattern
       const positions = particleGeometry.attributes.position.array;
       for (let i = 0; i < particleCount; i++) {
         const i3 = i * 3;
-        const initialX = particlePositions[i3];
-        const initialY = particlePositions[i3 + 1];
-        const initialZ = particlePositions[i3 + 2];
         
-        // Direction from the center
-        const dir = new THREE.Vector3(
-          initialX - position.x,
-          initialY - position.y, 
-          initialZ - position.z
-        ).normalize();
+        // Gentle poofing outward with a quick falloff
+        const expansionFactor = Math.pow(progress, 0.7) * 0.6; // Stay close to origin
         
-        // Move outward and slightly upward
-        positions[i3] = initialX + dir.x * progress * 2;
-        positions[i3 + 1] = initialY + dir.y * progress * 2 + progress * 0.5; // Add upward drift
-        positions[i3 + 2] = initialZ + dir.z * progress * 2;
+        // Random offset direction for each particle (different on each axis)
+        const offsetX = (Math.random() - 0.5) * 0.01;
+        const offsetY = (Math.random() - 0.5) * 0.01 + 0.005; // Slight upward bias
+        const offsetZ = (Math.random() - 0.5) * 0.01;
+        
+        // Move particles slightly outward from their initial positions
+        positions[i3] = initialPositions[i3] + 
+          ((initialPositions[i3] - position.x) * expansionFactor) + offsetX;
+        positions[i3 + 1] = initialPositions[i3 + 1] + 
+          ((initialPositions[i3 + 1] - position.y) * expansionFactor) + offsetY;
+        positions[i3 + 2] = initialPositions[i3 + 2] + 
+          ((initialPositions[i3 + 2] - position.z) * expansionFactor) + offsetZ;
       }
       particleGeometry.attributes.position.needsUpdate = true;
       
-      // Fade out particles
-      particleMaterial.opacity = 1 - progress;
+      // Fade out particles - quick at the end
+      const fadeCurve = 1 - Math.pow(progress, 2);
+      particleMaterial.opacity = 0.9 * fadeCurve;
       
       requestAnimationFrame(animateParticles);
     };
     
     animateParticles();
     
-    // Create a pulse of light at collection point
-    const collectLight = new THREE.PointLight(0x00ffff, 5, 3);
+    // Brief flash of light at collection point
+    const collectLight = new THREE.PointLight(0xFFDD33, 2, 1.5);
     collectLight.position.copy(position);
     this.scene.add(collectLight);
     
-    // Animate the light fading out
+    // Very quick light fade
     const animateLight = () => {
       const elapsed = Date.now() - startTime;
-      if (elapsed > duration * 0.7) { // Light fades faster than particles
+      if (elapsed > duration * 0.5) { // Light disappears halfway through
         this.scene.remove(collectLight);
         return;
       }
       
-      // Make the light intensity pulse and fade
-      const progress = elapsed / (duration * 0.7);
-      collectLight.intensity = 5 * (1 - progress);
+      // Quick fade
+      const progress = elapsed / (duration * 0.5);
+      collectLight.intensity = 2 * (1 - progress);
       
       requestAnimationFrame(animateLight);
     };
@@ -304,13 +305,13 @@ export class ExperienceOrbs {
     // Create HTML element for XP text
     const xpText = document.createElement('div');
     xpText.className = 'xp-text';
-    xpText.textContent = `+${amount} XP`;
+    xpText.textContent = `+${amount}`;
     xpText.style.position = 'absolute';
-    xpText.style.color = '#00FFFF';
+    xpText.style.color = '#FFDD33';
     xpText.style.fontWeight = 'bold';
-    xpText.style.fontSize = '18px';
-    xpText.style.textShadow = '0px 0px 5px #00FFFF, 0px 0px 10px #00FFFF';
-    xpText.style.opacity = '1';
+    xpText.style.fontSize = '16px';
+    xpText.style.textShadow = '0px 0px 5px #FFCC00, 0px 0px 7px #FFAA00';
+    xpText.style.opacity = '0.9';
     xpText.style.pointerEvents = 'none';
     xpText.style.userSelect = 'none';
     xpText.style.transform = 'translate(-50%, -50%)';
@@ -325,7 +326,7 @@ export class ExperienceOrbs {
     
     // Animate the text moving upward and fading out
     const startTime = Date.now();
-    const duration = 800; // ms
+    const duration = 500; // Shorter duration (500ms instead of 800ms)
     const startPosition = { ...screenPosition };
     
     const animateText = () => {
@@ -341,15 +342,15 @@ export class ExperienceOrbs {
       // Progress from 0 to 1
       const progress = elapsed / duration;
       
-      // Move upward
-      const y = startPosition.y - (progress * 50); // Move up 50px
+      // Move upward just a little bit
+      const y = startPosition.y - (progress * 30); // Move up 30px instead of 50px
       
       // Update position
       xpText.style.top = `${y}px`;
       
-      // Fade out in the last half of the animation
-      if (progress > 0.5) {
-        const opacity = 1 - ((progress - 0.5) * 2); // 1 to 0 in the second half
+      // Start fading out earlier
+      if (progress > 0.3) {
+        const opacity = 0.9 * (1 - ((progress - 0.3) / 0.7)); // Start fading at 30% of the way through
         xpText.style.opacity = opacity.toString();
       }
       
@@ -392,8 +393,8 @@ export class ExperienceOrbs {
     // Create a positional audio source
     const sound = new THREE.PositionalAudio(this.audioListener);
     sound.setBuffer(this.collectSound);
-    sound.setRefDistance(5);
-    sound.setVolume(0.5);
+    sound.setRefDistance(3); // Smaller reference distance (3 instead of 5)
+    sound.setVolume(0.3); // Lower volume (0.3 instead of 0.5)
     
     // Create a temporary object to hold the sound
     const soundObj = new THREE.Object3D();
