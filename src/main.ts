@@ -3,7 +3,6 @@ import * as THREE from 'three'
 import { Environment } from './environment'
 import { ExperienceOrbs } from './experience-orbs'
 import { FireballSystem } from './fireballs'
-import { EnemySystem } from './enemy'
 import { LevelSystem, LEVEL_THRESHOLDS } from './level-system'
 import { StartScreen } from './start-screen'
 import { NetworkManager, PlayerData } from './network-manager'
@@ -40,9 +39,6 @@ const levelSystem = new LevelSystem(scene);
 const fireballSystem = new FireballSystem(scene);
 fireballSystem.setLevelSystem(levelSystem);
 
-// Initialize the enemy system
-const enemySystem = new EnemySystem(scene);
-
 // Initialize experience orbs system
 const experienceOrbs = new ExperienceOrbs(scene, 150); // Create 150 orbs
 
@@ -53,7 +49,7 @@ let usernameLabel: HTMLElement | null = null;
 let dragon: Dragon | null = null;
 
 // Keep track of other players' dragons
-const otherPlayerDragons: Map<string, { dragon: Dragon, label: HTMLElement }> = new Map();
+const otherPlayerDragons: Map<string, { dragon: Dragon, label: HTMLElement, healthBarContainer: HTMLElement, healthBar: HTMLElement }> = new Map();
 
 // Initialize network manager
 const networkManager = new NetworkManager();
@@ -99,6 +95,96 @@ networkManager.onPlayerDamage((data) => {
     }
   }
 });
+
+// Handle health updates for other players
+networkManager.onPlayerHealthUpdated((playerId, health, maxHealth) => {
+  console.log(`Health update for player ${playerId}: ${health}/${maxHealth}`);
+  
+  // Update the health bar for the player if they exist in our map
+  const otherPlayer = otherPlayerDragons.get(playerId);
+  if (otherPlayer) {
+    const remotePlayerDragon = otherPlayer.dragon as any;
+    
+    // Store old health to check for damage effects
+    const oldHealth = remotePlayerDragon.health || 100;
+    
+    // Update the dragon health values
+    remotePlayerDragon.health = health;
+    remotePlayerDragon.maxHealth = maxHealth;
+    
+    // Update the health bar display
+    if (otherPlayer.healthBar) {
+      const healthPercent = (health / maxHealth) * 100;
+      otherPlayer.healthBar.style.width = `${healthPercent}%`;
+      
+      // Change color based on health percentage
+      if (healthPercent > 60) {
+        otherPlayer.healthBar.style.backgroundColor = '#00FF00'; // Green
+      } else if (healthPercent > 30) {
+        otherPlayer.healthBar.style.backgroundColor = '#FFFF00'; // Yellow
+      } else {
+        otherPlayer.healthBar.style.backgroundColor = '#FF0000'; // Red
+      }
+      
+      // If health decreased, show damage effect
+      if (health < oldHealth) {
+        collisionFeedback.createCollisionParticles(remotePlayerDragon.body.position, 0xff0000);
+      }
+    }
+  }
+});
+
+// Handle player respawn
+networkManager.onPlayerRespawn((data) => {
+  console.log(`Received respawn event with health: ${data.health}/${data.maxHealth}`);
+  
+  // Reset local player
+  if (dragon) {
+    // Reset health
+    levelSystem.updateHealth(data.health);
+    
+    // Reset position
+    dragon.body.position.set(data.position.x, data.position.y, data.position.z);
+    dragon.velocity.set(0, 0, 0);
+    
+    // Make dragon visible again if it was hidden
+    dragon.body.visible = true;
+    
+    // Clear nearby obstacles
+    dragon.clearOrbsNearStartPosition();
+    
+    // Reset player state
+    isPlayerDead = false;
+    
+    // Show respawn message
+    const respawnMessage = document.createElement('div');
+    respawnMessage.className = 'respawn-message';
+    respawnMessage.textContent = 'You have respawned!';
+    respawnMessage.style.position = 'absolute';
+    respawnMessage.style.top = '40%';
+    respawnMessage.style.left = '50%';
+    respawnMessage.style.transform = 'translate(-50%, -50%)';
+    respawnMessage.style.color = '#00FF00';
+    respawnMessage.style.fontSize = '24px';
+    respawnMessage.style.fontWeight = 'bold';
+    respawnMessage.style.textShadow = '0 0 10px #00FF00';
+    respawnMessage.style.zIndex = '1000';
+    document.body.appendChild(respawnMessage);
+    
+    // Remove the message after 2 seconds
+    setTimeout(() => {
+      document.body.removeChild(respawnMessage);
+    }, 2000);
+  }
+});
+
+// Sync our health with the server periodically
+setInterval(() => {
+  if (dragon && levelSystem) {
+    const stats = levelSystem.getStats();
+    networkManager.sendHealthUpdate(stats.currentHealth, stats.maxHealth);
+  }
+}, 1000); // Send health update every second
 
 // Add a debug display element
 const debugDisplay = document.createElement('div');
@@ -189,6 +275,10 @@ function createOtherPlayerDragon(player: PlayerData) {
     rotationLerpFactor: number = 0.1; // Controls how quickly to rotate to target rotation
     lastUpdateTime: number = Date.now();
     
+    // Add health property for other players
+    health: number = 100;
+    maxHealth: number = 100;
+    
     constructor(size = 1) {
       super(size);
       
@@ -256,6 +346,15 @@ function createOtherPlayerDragon(player: PlayerData) {
   // Create a new Dragon instance with the correct parameters
   const otherDragon = new RemotePlayerDragon(player.size || 1);
   
+  // Set initial health if provided
+  if (player.health !== undefined) {
+    otherDragon.health = player.health;
+  }
+  
+  if (player.maxHealth !== undefined) {
+    otherDragon.maxHealth = player.maxHealth;
+  }
+  
   // Now manually add to scene
   scene.add(otherDragon.body);
   
@@ -304,8 +403,33 @@ function createOtherPlayerDragon(player: PlayerData) {
   label.style.zIndex = '1000';
   document.body.appendChild(label);
   
-  // Store the dragon and label
-  otherPlayerDragons.set(player.id, { dragon: otherDragon, label });
+  // Create health bar for other player
+  const healthBarContainer = document.createElement('div');
+  healthBarContainer.className = 'health-bar-container';
+  healthBarContainer.style.position = 'absolute';
+  healthBarContainer.style.width = '60px';
+  healthBarContainer.style.height = '8px';
+  healthBarContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  healthBarContainer.style.borderRadius = '4px';
+  healthBarContainer.style.transform = 'translateX(-50%)';
+  healthBarContainer.style.zIndex = '1000';
+  document.body.appendChild(healthBarContainer);
+  
+  const healthBar = document.createElement('div');
+  healthBar.className = 'health-bar-fill';
+  healthBar.style.width = '100%';
+  healthBar.style.height = '100%';
+  healthBar.style.backgroundColor = '#00FF00';
+  healthBar.style.borderRadius = '4px';
+  healthBarContainer.appendChild(healthBar);
+  
+  // Store the dragon, label and health bar
+  otherPlayerDragons.set(player.id, { 
+    dragon: otherDragon, 
+    label,
+    healthBarContainer,
+    healthBar
+  });
   
   console.log(`Created dragon for player ${player.name} (${player.id})`); // Add debug log
 }
@@ -366,6 +490,41 @@ function updateOtherPlayerDragon(player: PlayerData) {
     remotePlayerDragon.lastUpdateTime = now;
   }
   
+  // Update health if provided
+  if (player.health !== undefined) {
+    // Log health changes when they occur
+    if (remotePlayerDragon.health !== player.health) {
+      console.log(`Player ${player.name} health changed: ${remotePlayerDragon.health} -> ${player.health}`);
+      
+      // If health decreased, show hit effect
+      if (player.health < remotePlayerDragon.health) {
+        // Create hit effect at player position
+        collisionFeedback.createCollisionParticles(remotePlayerDragon.body.position, 0xff0000);
+      }
+    }
+    
+    remotePlayerDragon.health = player.health;
+    if (player.maxHealth !== undefined) {
+      remotePlayerDragon.maxHealth = player.maxHealth;
+    }
+    
+    // Always update health bar
+    if (otherPlayer.healthBar) {
+      const maxHealth = remotePlayerDragon.maxHealth || 100;
+      const healthPercent = (remotePlayerDragon.health / maxHealth) * 100;
+      otherPlayer.healthBar.style.width = `${healthPercent}%`;
+      
+      // Change color based on health percentage
+      if (healthPercent > 60) {
+        otherPlayer.healthBar.style.backgroundColor = '#00FF00'; // Green
+      } else if (healthPercent > 30) {
+        otherPlayer.healthBar.style.backgroundColor = '#FFFF00'; // Yellow
+      } else {
+        otherPlayer.healthBar.style.backgroundColor = '#FF0000'; // Red
+      }
+    }
+  }
+  
   // Only log periodically
   if (now % 3000 < 50) {
     console.log(`  New target position: ${remotePlayerDragon.targetPosition.x.toFixed(2)}, ${remotePlayerDragon.targetPosition.y.toFixed(2)}, ${remotePlayerDragon.targetPosition.z.toFixed(2)}`);
@@ -382,6 +541,11 @@ function removeOtherPlayerDragon(playerId: string) {
   
   // Remove the username label
   document.body.removeChild(otherPlayer.label);
+  
+  // Remove health bar
+  if (otherPlayer.healthBarContainer) {
+    document.body.removeChild(otherPlayer.healthBarContainer);
+  }
   
   // Remove from the map
   otherPlayerDragons.delete(playerId);
@@ -1511,46 +1675,6 @@ const followCamera = () => {
   camera.lookAt(lookAtPos);
 }
 
-// Update enemy damage to player
-function updateEnemyAttacks() {
-  if (!dragon) return;
-  
-  // Check for enemy collisions with player
-  for (let i = 0; i < enemySystem.enemies.length; i++) {
-    const enemy = enemySystem.enemies[i];
-    if (!enemy.body) continue;
-    
-    // Check if enemy is close enough to damage player
-    const distance = enemy.body.position.distanceTo(dragon.body.position);
-    
-    // Use the original collision detection radius regardless of dragon's visual size
-    const effectiveCollisionRadius = 0.7; // Base collision size
-    const combinedRadius = effectiveCollisionRadius + 1; // Enemy radius is approximately 1
-    
-    if (distance < combinedRadius) {
-      // Apply damage to player
-      const now = Date.now();
-      // Only take damage every 1 second
-      if (now - dragon.lastDamageTime > 1000) {
-        const damageTaken = 10; // Base damage from enemy
-        const playerDied = levelSystem.takeDamage(damageTaken);
-        
-        // Visual and audio feedback
-        collisionFeedback.startCameraShake(0.15, 300);
-        collisionFeedback.createCollisionParticles(dragon.body.position, 0xff0000);
-        
-        // Store last damage time
-        dragon.lastDamageTime = now;
-        
-        // Handle player death
-        if (playerDied) {
-          handlePlayerDeath();
-        }
-      }
-    }
-  }
-}
-
 // Handle player death
 function handlePlayerDeath() {
   if (!dragon) return;
@@ -1709,6 +1833,15 @@ function animate() {
         otherPlayer.label.style.transform = `translate(-50%, -100%)`;
         otherPlayer.label.style.left = `${x}px`;
         otherPlayer.label.style.top = `${y}px`;
+        
+        // Position health bar below username
+        if (otherPlayer.healthBarContainer) {
+          otherPlayer.healthBarContainer.style.display = 'block';
+          otherPlayer.healthBarContainer.style.left = `${x}px`;
+          otherPlayer.healthBarContainer.style.top = `${y + 25}px`;
+        }
+      } else if (otherPlayer.healthBarContainer) {
+        otherPlayer.healthBarContainer.style.display = 'none';
       }
     });
   
@@ -1717,12 +1850,6 @@ function animate() {
     
     // Update fireballs with deltaTime for consistent movement
     fireballSystem.update(deltaTime);
-    
-    // Update enemies and check for attacks
-    if (!isPlayerDead) {
-      enemySystem.update(dragon.body.position);
-      updateEnemyAttacks();
-    }
   
     // Check for dragon collision with orbs
     const collectedCount = experienceOrbs.checkCollisions(dragon.body.position, 2);
@@ -1737,10 +1864,10 @@ function animate() {
     // Check fireball collisions with environment objects
     const environmentObjects = environment ? environment.getCollisionObjects() : [];
     
-    // Check fireball collisions with environment, enemies, and other players
+    // Check fireball collisions with environment, and other players only (no enemies)
     const fireballXP = fireballSystem.checkCollisions(
       environmentObjects, 
-      enemySystem.enemies,
+      [], // Empty array instead of enemySystem.enemies
       otherPlayerDragons,
       networkManager
     );

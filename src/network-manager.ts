@@ -263,7 +263,7 @@ export class NetworkManager {
         return;
       }
       
-      console.log(`Received damage from player ${data.sourcePlayerId}: ${data.damage} damage`);
+      console.log(`Received damage from player ${data.sourcePlayerId}: ${data.damage} damage, health now ${data.currentHealth}`);
       
       // Call the damage callback if registered
       if (this.onPlayerDamageCallback) {
@@ -290,12 +290,33 @@ export class NetworkManager {
       health: number, 
       maxHealth: number 
     }) => {
+      console.log(`Received health update for player ${data.playerId}: ${data.health}/${data.maxHealth}`);
+      
       // Update the stored health value for this player
       if (this.players.has(data.playerId)) {
         const player = this.players.get(data.playerId)!;
         player.health = data.health;
         player.maxHealth = data.maxHealth;
         this.players.set(data.playerId, player);
+        
+        // Call health update callback if registered
+        if (this.onPlayerHealthUpdatedCallback) {
+          this.onPlayerHealthUpdatedCallback(data.playerId, data.health, data.maxHealth);
+        }
+      }
+    });
+    
+    // Handle player respawn events
+    this.socket.on('player:respawn', (data: {
+      health: number,
+      maxHealth: number,
+      position: { x: number, y: number, z: number }
+    }) => {
+      console.log(`Player respawned with health: ${data.health}/${data.maxHealth}`);
+      
+      // Call respawn callback if registered
+      if (this.onPlayerRespawnCallback) {
+        this.onPlayerRespawnCallback(data);
       }
     });
   }
@@ -655,6 +676,22 @@ export class NetworkManager {
   public onPlayerDamage(callback: (data: { sourcePlayerId: string, targetPlayerId: string, damage: number, currentHealth: number }) => void) {
     console.log('Player damage callback registered');
     this.onPlayerDamageCallback = callback;
+  }
+  
+  // Register health update callback
+  private onPlayerHealthUpdatedCallback: ((playerId: string, health: number, maxHealth: number) => void) | null = null;
+  
+  public onPlayerHealthUpdated(callback: (playerId: string, health: number, maxHealth: number) => void) {
+    console.log('Player health update callback registered');
+    this.onPlayerHealthUpdatedCallback = callback;
+  }
+  
+  // Register respawn callback
+  private onPlayerRespawnCallback: ((data: { health: number, maxHealth: number, position: { x: number, y: number, z: number } }) => void) | null = null;
+  
+  public onPlayerRespawn(callback: (data: { health: number, maxHealth: number, position: { x: number, y: number, z: number } }) => void) {
+    console.log('Player respawn callback registered');
+    this.onPlayerRespawnCallback = callback;
   }
   
   // Send player damage event to server

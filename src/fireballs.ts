@@ -509,30 +509,53 @@ export class FireballSystem {
           // Check distance
           const distance = fireball.position.distanceTo(dragonPosition);
           
+          // Log collision checks periodically for debugging
+          const now = Date.now();
+          if (now % 1000 < 50) {
+            console.log(`Checking fireball collision with player ${playerId}:`);
+            console.log(`  Fireball pos: ${fireball.position.x.toFixed(2)}, ${fireball.position.y.toFixed(2)}, ${fireball.position.z.toFixed(2)}`);
+            console.log(`  Dragon pos: ${dragonPosition.x.toFixed(2)}, ${dragonPosition.y.toFixed(2)}, ${dragonPosition.z.toFixed(2)}`);
+            console.log(`  Distance: ${distance.toFixed(2)} vs threshold: ${(fireball.radius + dragonRadius).toFixed(2)}`);
+          }
+          
           // If collision detected
           if (distance < (fireball.radius + dragonRadius)) {
             // Handle hit on other player
             console.log(`Fireball hit player ${playerId}!`);
+            console.log(`  Fireball damage: ${fireball.damage}, isLocal: ${fireball.isLocal}`);
+            console.log(`  Player current health: ${otherDragon.health || 100}`);
             
-            // Only local fireballs cause damage (prevent damage from other players' fireballs)
+            // Apply damage based on the fireball's damage value
+            const damage = fireball.damage || 25;
+            
+            // Get current health if available or assume 100
+            const currentHealth = (otherDragon.health || 100) - damage;
+            const updatedHealth = Math.max(0, currentHealth);
+            
+            // Check if player was already at 0 health (already dead)
+            const wasAlreadyDead = otherDragon.health <= 0;
+            
+            // Update health on the other dragon
+            otherDragon.health = updatedHealth;
+            console.log(`  Updated player health: ${updatedHealth}`);
+            
+            // Only send damage event for local fireballs (ones we shot)
             if (fireball.isLocal) {
-              // Apply damage to the other player (25 is a base damage value)
-              const damage = fireball.damage || 25;
-              
-              // Get current health if available or assume 100
-              const currentHealth = (otherDragon.health || 100) - damage;
-              const updatedHealth = Math.max(0, currentHealth);
-              
-              // Update health on the other dragon
-              otherDragon.health = updatedHealth;
-              
               // Send damage event
+              console.log(`  Sending damage event to server: ${damage} damage to player ${playerId}`);
               networkManager.sendPlayerDamage(playerId, damage, updatedHealth);
               
-              // Check if player was killed
-              if (updatedHealth <= 0 && playerInfo.label) {
+              // Check if player was killed - but only if they weren't already dead
+              if (updatedHealth <= 0 && !wasAlreadyDead && playerInfo.label) {
                 const killedPlayerName = playerInfo.label.textContent || 'Unknown Player';
+                console.log(`  Player ${killedPlayerName} was defeated!`);
                 networkManager.sendPlayerKill(playerId, killedPlayerName);
+                
+                // Award XP for defeating a player
+                totalXP += 100;
+              } else if (updatedHealth > 0) {
+                // Award a small amount of XP for damaging a player
+                totalXP += 5;
               }
             }
             
