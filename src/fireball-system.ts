@@ -54,12 +54,62 @@ export class Fireball {
         new THREE.MeshBasicMaterial({
           color: 0x00ffff,
           transparent: true,
-          opacity: 0.3,
+          opacity: 0.7,
           side: THREE.FrontSide
         })
       );
-      extraGlow.scale.set(2.5, 2.5, 2.5);
+      extraGlow.scale.set(4.0, 4.0, 4.0);
       this.mesh.add(extraGlow);
+      
+      // Add a bright outer ring for increased visibility
+      const outerRing = new THREE.Mesh(
+        new THREE.RingGeometry(1.8, 2.0, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0xFFFFFF,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide
+        })
+      );
+      // Orient the ring perpendicular to the direction of travel
+      outerRing.lookAt(direction);
+      this.mesh.add(outerRing);
+      
+      // Add a second larger outer ring for increased visibility at distance
+      const farRing = new THREE.Mesh(
+        new THREE.RingGeometry(2.8, 3.0, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0x00ffff,
+          transparent: true,
+          opacity: 0.6,
+          side: THREE.DoubleSide
+        })
+      );
+      farRing.lookAt(direction);
+      this.mesh.add(farRing);
+      
+      // Add animated warning pulse for visibility
+      const warningPulse = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 16, 16),
+        new THREE.MeshBasicMaterial({
+          color: 0xFFFFFF,
+          transparent: true,
+          opacity: 0.0,
+          side: THREE.FrontSide
+        })
+      );
+      warningPulse.scale.set(5.0, 5.0, 5.0);
+      this.mesh.add(warningPulse);
+      
+      // Animate the warning pulse
+      const pulseAnimation = () => {
+        const material = warningPulse.material as THREE.MeshBasicMaterial;
+        const time = Date.now() % 800 / 800;
+        material.opacity = Math.sin(time * Math.PI) * 0.7;
+      };
+      
+      // Store the animation function for use in update
+      (this as any).pulseAnimation = pulseAnimation;
     }
     
     // Add glow effect - reuse geometry and clone material
@@ -70,8 +120,8 @@ export class Fireball {
     // Add light - reduced intensity for performance
     // Use different colors for local vs remote fireballs
     const lightColor = isLocal ? 0xff6600 : 0x00ffff;
-    const lightIntensity = isLocal ? 0.8 : 1.2; // Brighter for remote fireballs
-    this.light = new THREE.PointLight(lightColor, lightIntensity, radius * 12);
+    const lightIntensity = isLocal ? 0.8 : 2.5; // Much brighter for remote fireballs
+    this.light = new THREE.PointLight(lightColor, lightIntensity, radius * 30);
     this.light.position.set(0, 0, 0);
     this.mesh.add(this.light);
     
@@ -82,6 +132,21 @@ export class Fireball {
       
       // Set render order to ensure visibility
       this.mesh.renderOrder = 1000;
+      
+      // Create direction indicator (arrow shape pointing in direction of travel)
+      const arrowLength = radius * 5; // Length of the arrow
+      const arrowGeometry = new THREE.CylinderGeometry(0, radius * 0.8, arrowLength, 8);
+      const arrowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xFFFFFF,
+        transparent: true,
+        opacity: 0.8
+      });
+      const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+      
+      // Position and rotate arrow to point in direction of travel
+      arrow.position.set(0, 0, -arrowLength/2);  // Position behind the fireball
+      arrow.rotation.x = Math.PI / 2;  // Rotate to point along z-axis
+      this.mesh.add(arrow);
       
       // Log creation of remote fireball
       console.log(`Remote fireball mesh created with radius ${radius}`);
@@ -109,9 +174,16 @@ export class Fireball {
     this.mesh.rotation.x += 0.05;
     this.mesh.rotation.y += 0.05;
     
-    // Only create trail particles occasionally - reduced for performance
+    // Animate warning pulse for remote fireballs
+    if (!this.isLocal && (this as any).pulseAnimation) {
+      (this as any).pulseAnimation();
+    }
+    
+    // Create more frequent trail particles for remote fireballs
     const now = Date.now();
-    if (now - this.trailTimer > 100) { // Reduced trail frequency
+    const trailFrequency = this.isLocal ? 100 : 50; // More frequent for remote fireballs
+    
+    if (now - this.trailTimer > trailFrequency) {
       this.addTrailParticle();
       this.trailTimer = now;
     }
@@ -145,17 +217,138 @@ export class Fireball {
   }
   
   addTrailParticle() {
-    // Create a simplified trail particle
     // Use different colors for local vs remote fireballs
     const color = this.isLocal ? 0xff6600 : 0x1E90FF;
     
+    // For remote fireballs, create a more prominent trail
+    if (!this.isLocal) {
+      // Create a directional trail that extends behind the fireball
+      const trailLength = this.radius * 12; // Longer trail for better visibility
+      
+      // Create direction-based trail (cone shape)
+      const trailGeometry = new THREE.ConeGeometry(this.radius * 1.5, trailLength, 8);
+      const trailMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+      });
+      
+      const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+      
+      // Calculate inverse direction (where the fireball came from)
+      const inverseDirection = this.velocity.clone().negate().normalize();
+      
+      // Position trail behind the fireball
+      const trailPosition = this.position.clone().add(
+        inverseDirection.multiplyScalar(trailLength / 2)
+      );
+      
+      trail.position.copy(trailPosition);
+      
+      // Orient the trail to point backward
+      trail.lookAt(this.position.clone().add(inverseDirection));
+      trail.rotateX(Math.PI / 2);
+      
+      this.scene.add(trail);
+      this.trailParticles.push(trail);
+      
+      // Create a long-lasting tracer line for better visibility at distance
+      const tracerLength = this.radius * 25; // Very long tracer
+      const tracerGeometry = new THREE.BoxGeometry(this.radius * 0.3, this.radius * 0.3, tracerLength);
+      const tracerMaterial = new THREE.MeshBasicMaterial({
+        color: 0x80dfff,
+        transparent: true,
+        opacity: 0.5
+      });
+      
+      const tracer = new THREE.Mesh(tracerGeometry, tracerMaterial);
+      
+      // Position the tracer behind the fireball
+      const tracerPosition = this.position.clone().add(
+        inverseDirection.multiplyScalar(tracerLength / 2)
+      );
+      
+      tracer.position.copy(tracerPosition);
+      
+      // Orient the tracer along the movement path
+      tracer.lookAt(this.position.clone().add(inverseDirection));
+      tracer.rotateX(Math.PI / 2);
+      
+      this.scene.add(tracer);
+      this.trailParticles.push(tracer);
+      
+      // Add bright "sparkle" particles at random positions along the tracer
+      for (let i = 0; i < 3; i++) {
+        const sparkleGeometry = new THREE.SphereGeometry(this.radius * 0.7, 8, 8);
+        const sparkleMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.9
+        });
+        
+        const sparkle = new THREE.Mesh(sparkleGeometry, sparkleMaterial);
+        
+        // Position at random point along tracer path
+        const randomOffset = Math.random() * tracerLength * 0.8;
+        const sparklePosition = this.position.clone().add(
+          inverseDirection.multiplyScalar(randomOffset)
+        );
+        
+        sparkle.position.copy(sparklePosition);
+        
+        this.scene.add(sparkle);
+        this.trailParticles.push(sparkle);
+      }
+      
+      // Fade out the trail more slowly for longer visibility
+      let opacity = 0.8;
+      
+      const fadeInterval = setInterval(() => {
+        opacity -= 0.08; // Slower fade for better visibility
+        
+        if (opacity <= 0) {
+          clearInterval(fadeInterval);
+          this.scene.remove(trail);
+          this.scene.remove(tracer);
+          
+          // Remove all trail particles
+          this.trailParticles.forEach(particle => {
+            if (particle.parent) {
+              this.scene.remove(particle);
+            }
+          });
+          this.trailParticles = this.trailParticles.filter(p => p !== trail && p !== tracer);
+          
+          // Dispose geometries and materials
+          trailGeometry.dispose();
+          trailMaterial.dispose();
+          tracerGeometry.dispose();
+          tracerMaterial.dispose();
+        } else {
+          // Update opacity of all materials
+          trailMaterial.opacity = opacity;
+          tracerMaterial.opacity = opacity * 0.6;
+          
+          // Update sparkle opacities
+          this.trailParticles.forEach(particle => {
+            if (particle !== trail && particle !== tracer) {
+              ((particle as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = opacity;
+            }
+          });
+        }
+      }, 50); // Longer-lasting effect
+      
+      return; // Skip regular particle creation for remote fireballs
+    }
+    
+    // Regular trail particles for local fireballs (existing code)
     const material = new THREE.MeshBasicMaterial({
       color: color,
       transparent: true,
       opacity: 0.7
     });
     
-    // Reuse geometry and create fewer particles
     const geometry = new THREE.SphereGeometry(this.radius * 0.4, 4, 4);
     const particle = new THREE.Mesh(geometry, material);
     particle.position.copy(this.position);
