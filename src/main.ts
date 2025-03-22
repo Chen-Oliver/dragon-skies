@@ -679,6 +679,12 @@ function removeOtherPlayerDragon(playerId: string) {
 // Start the game when the player enters a username
 const startScreen = new StartScreen({
   onGameStart: (username) => {
+    // Check if server is available before starting
+    if (!networkManager.isServerAvailable()) {
+      console.log('Cannot start game: server unavailable');
+      return;
+    }
+    
     playerUsername = username;
     isGameStarted = true;
     
@@ -698,6 +704,60 @@ const startScreen = new StartScreen({
     usernameLabel.style.transform = 'translateX(-50%)';
     usernameLabel.style.zIndex = '1000';
     document.body.appendChild(usernameLabel);
+  }
+});
+
+// Track server availability and update the start screen
+networkManager.onServerStatusChange((isAvailable) => {
+  console.log(`Server availability changed: ${isAvailable ? 'ONLINE' : 'OFFLINE'}`);
+  startScreen.setServerAvailability(isAvailable);
+  
+  // If server becomes unavailable during gameplay, show a message
+  if (!isAvailable && isGameStarted) {
+    const disconnectMessage = document.createElement('div');
+    disconnectMessage.className = 'disconnect-message';
+    disconnectMessage.innerHTML = `
+      <div class="disconnect-container">
+        <h2>Connection Lost</h2>
+        <p>We've lost connection to the game server. Please wait while we try to reconnect...</p>
+        <div class="loading-spinner"></div>
+      </div>
+    `;
+    document.body.appendChild(disconnectMessage);
+    
+    // Add styles for the disconnect message
+    const style = document.createElement('style');
+    style.innerHTML = `
+      .disconnect-message {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        z-index: 10000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-family: Arial, sans-serif;
+      }
+      
+      .disconnect-container {
+        background-color: rgba(0, 0, 0, 0.6);
+        padding: 30px;
+        border-radius: 10px;
+        text-align: center;
+        max-width: 400px;
+      }
+    `;
+    document.head.appendChild(style);
+  } else if (isAvailable && isGameStarted) {
+    // If reconnected, remove the disconnect message if it exists
+    const disconnectMessage = document.querySelector('.disconnect-message');
+    if (disconnectMessage) {
+      document.body.removeChild(disconnectMessage);
+    }
   }
 });
 

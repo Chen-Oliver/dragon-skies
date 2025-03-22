@@ -9,6 +9,9 @@ export class StartScreen {
   private usernameInput: HTMLInputElement;
   private startButton: HTMLButtonElement;
   private options: StartScreenOptions;
+  private pendingMessage: HTMLElement;
+  private contentContainer: HTMLElement;
+  private isServerAvailable: boolean = true;
 
   constructor(options: StartScreenOptions) {
     this.options = options;
@@ -20,6 +23,7 @@ export class StartScreen {
     // Create content container
     const content = document.createElement('div');
     content.className = 'start-screen-content';
+    this.contentContainer = content;
     
     // Create title
     const title = document.createElement('h1');
@@ -40,6 +44,16 @@ export class StartScreen {
     this.startButton = document.createElement('button');
     this.startButton.textContent = 'Start Game';
     
+    // Create pending message
+    this.pendingMessage = document.createElement('div');
+    this.pendingMessage.className = 'pending-message';
+    this.pendingMessage.innerHTML = `
+      <h2>Connecting to server...</h2>
+      <p>Please wait while we try to connect to the game server.</p>
+      <div class="loading-spinner"></div>
+    `;
+    this.pendingMessage.style.display = 'none';
+    
     // Add event listener for start button
     this.startButton.addEventListener('click', this.handleStart.bind(this));
     this.usernameInput.addEventListener('keydown', (e) => {
@@ -54,6 +68,7 @@ export class StartScreen {
     content.appendChild(this.usernameInput);
     content.appendChild(this.startButton);
     this.container.appendChild(content);
+    this.container.appendChild(this.pendingMessage);
     
     // Add to document
     document.body.appendChild(this.container);
@@ -74,11 +89,37 @@ export class StartScreen {
       return;
     }
     
+    // First check if server is available
+    if (!this.isServerAvailable) {
+      this.showPendingScreen();
+      return;
+    }
+    
     // Call callback with username
     this.options.onGameStart(username);
     
     // Remove the start screen
     this.hide();
+  }
+  
+  public setServerAvailability(isAvailable: boolean): void {
+    this.isServerAvailable = isAvailable;
+    
+    if (isAvailable) {
+      this.hidePendingScreen();
+    } else {
+      this.showPendingScreen();
+    }
+  }
+  
+  private showPendingScreen(): void {
+    this.contentContainer.style.display = 'none';
+    this.pendingMessage.style.display = 'block';
+  }
+  
+  private hidePendingScreen(): void {
+    this.pendingMessage.style.display = 'none';
+    this.contentContainer.style.display = 'block';
   }
   
   public hide(): void {
@@ -98,6 +139,21 @@ style.innerHTML = `
   0%, 100% { transform: translateX(0); }
   10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
   20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+.loading-spinner {
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 5px solid #ffffff;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 `;
 document.head.appendChild(style); 

@@ -64,6 +64,10 @@ export class NetworkManager {
   private connectionHealthy: boolean = true;
   private playerName: string = '';
   
+  // For server availability
+  private onServerStatusChangeCallback: ((isAvailable: boolean) => void) | null = null;
+  private serverAvailable: boolean = false;
+  
   constructor(serverUrl: string = 'http://localhost:3000') {
     // Connect to the WebSocket server
     this.socket = socketIOClient(serverUrl);
@@ -85,6 +89,31 @@ export class NetworkManager {
   }
   
   private setupEventListeners() {
+    // Socket connection events
+    this.socket.on('connect', () => {
+      console.log('Connected to server!');
+      this.serverAvailable = true;
+      if (this.onServerStatusChangeCallback) {
+        this.onServerStatusChangeCallback(true);
+      }
+    });
+    
+    this.socket.on('connect_error', (error: any) => {
+      console.error('Connection error:', error);
+      this.serverAvailable = false;
+      if (this.onServerStatusChangeCallback) {
+        this.onServerStatusChangeCallback(false);
+      }
+    });
+    
+    this.socket.on('disconnect', (reason: string) => {
+      console.log(`Disconnected from server: ${reason}`);
+      this.serverAvailable = false;
+      if (this.onServerStatusChangeCallback) {
+        this.onServerStatusChangeCallback(false);
+      }
+    });
+    
     // Handle receiving player's ID from server
     this.socket.on('player:id', (id: string) => {
       console.log(`Received player ID: ${id}`);
@@ -806,5 +835,17 @@ export class NetworkManager {
     setTimeout(() => {
       document.body.removeChild(notification);
     }, 3000);
+  }
+  
+  public onServerStatusChange(callback: (isAvailable: boolean) => void) {
+    this.onServerStatusChangeCallback = callback;
+    // Immediately call with current status if we already know it
+    if (this.onServerStatusChangeCallback) {
+      this.onServerStatusChangeCallback(this.serverAvailable);
+    }
+  }
+  
+  public isServerAvailable(): boolean {
+    return this.serverAvailable;
   }
 } 
