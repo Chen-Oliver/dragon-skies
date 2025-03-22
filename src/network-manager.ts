@@ -1,5 +1,6 @@
 import socketIOClient from "socket.io-client";
 import * as THREE from 'three';
+import { DragonColorType, DefaultDragonColor } from "./dragon";
 
 // Define types for player data
 export interface PlayerData {
@@ -10,6 +11,7 @@ export interface PlayerData {
   size?: number;
   health?: number;
   maxHealth?: number;
+  dragonColor?: DragonColorType;
 }
 
 export interface PlayerPositionData {
@@ -39,6 +41,7 @@ export class NetworkManager {
   private onPlayerPositionUpdatedCallback: ((player: PlayerData) => void) | null = null;
   private onPlayersInitialCallback: ((players: PlayerData[]) => void) | null = null;
   private onPlayerFireballCallback: ((fireball: FireballData) => void) | null = null;
+  private onPlayerColorChangedCallback: ((playerId: string, dragonColor: DragonColorType) => void) | null = null;
   
   // UI for player list
   private playerListUI: HTMLElement | null = null;
@@ -385,6 +388,26 @@ export class NetworkManager {
       if (stalePlayerIds.length > 0) {
         this.updatePlayerListUI();
         console.log(`Removed ${stalePlayerIds.length} stale players during validation`);
+      }
+    });
+    
+    // Handle player color change
+    this.socket.on('player:colorChanged', (data: { id: string, dragonColor: DragonColorType }) => {
+      console.log(`Player color changed:`, data);
+      
+      // Update in players map
+      if (this.players.has(data.id)) {
+        const existingPlayer = this.players.get(data.id)!;
+        existingPlayer.dragonColor = data.dragonColor;
+        this.players.set(data.id, existingPlayer);
+        console.log(`Updated player color in map for: ${existingPlayer.name} (${data.id}) to ${data.dragonColor}`);
+      } else {
+        console.log(`Warning: Received color change for unknown player: ${data.id}`);
+      }
+      
+      // Call callback if set
+      if (this.onPlayerColorChangedCallback) {
+        this.onPlayerColorChangedCallback(data.id, data.dragonColor);
       }
     });
   }
@@ -847,5 +870,19 @@ export class NetworkManager {
   
   public isServerAvailable(): boolean {
     return this.serverAvailable;
+  }
+  
+  public setDragonColor(dragonColor: DragonColorType) {
+    if (!this.socket) {
+      console.error('Cannot set dragon color: socket not connected');
+      return;
+    }
+    
+    console.log(`Setting dragon color to: ${dragonColor}`);
+    this.socket.emit('player:setDragonColor', dragonColor);
+  }
+  
+  public onPlayerColorChanged(callback: (playerId: string, dragonColor: DragonColorType) => void) {
+    this.onPlayerColorChangedCallback = callback;
   }
 } 

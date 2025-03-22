@@ -1,11 +1,14 @@
 import './style.css'
 import * as THREE from 'three'
+import * as CANNON from 'cannon-es'
 import { Environment } from './environment'
 import { ExperienceOrbs } from './experience-orbs'
 import { FireballSystem } from './fireballs'
 import { LevelSystem, LEVEL_THRESHOLDS } from './level-system'
 import { StartScreen } from './start-screen'
 import { NetworkManager, PlayerData } from './network-manager'
+import { DragonColorType, DragonColors, DefaultDragonColor } from './dragon'
+import { PointerLockControlsCannon } from './PointerLockControlsCannon'
 
 // Polyfill for requestAnimationFrame to ensure it continues in background
 // This will help maintain position updates even when tab isn't active
@@ -291,6 +294,17 @@ networkManager.onPlayerLeft((player: PlayerData) => {
   removeOtherPlayerDragon(player.id);
 });
 
+// Handle player color changes
+networkManager.onPlayerColorChanged((playerId, dragonColor) => {
+  console.log(`Player ${playerId} changed dragon color to ${dragonColor}`);
+  const otherDragonData = otherPlayerDragons.get(playerId);
+  if (otherDragonData) {
+    otherDragonData.dragon.setDragonColor(dragonColor);
+  } else {
+    console.log(`Cannot update dragon color: no dragon found for player ${playerId}`);
+  }
+});
+
 // Add a function to verify all dragons belong to active players
 function validateDragonObjects() {
   // Get a list of valid player IDs from the network manager
@@ -371,11 +385,12 @@ function createOtherPlayerDragon(player: PlayerData) {
       constructor(size = 1) {
         super(size);
         
-        // Remove this dragon from the scene since we'll manually add it in the right position
-        scene.remove(this.body);
-        
-        // Don't clear orbs - this would cause issues with multiple players
-        // No need to call clearOrbsNearStartPosition
+        // IMPORTANT: Disable frustum culling to ensure updates happen even when off-screen
+        this.body.traverse((object) => {
+          if (object instanceof THREE.Mesh || object instanceof THREE.Group) {
+            object.frustumCulled = false;
+          }
+        });
       }
       
       // Method to handle large jumps in position (teleporting)
@@ -390,6 +405,12 @@ function createOtherPlayerDragon(player: PlayerData) {
         
         // Force matrix update
         this.body.updateMatrixWorld(true);
+      }
+      
+      // Override setDragonColor to ensure remote dragons display the correct color
+      setDragonColor(color: DragonColorType) {
+        this.dragonColor = color;
+        this.updateDragonColor();
       }
       
       // Override update method to handle interpolation
@@ -432,7 +453,7 @@ function createOtherPlayerDragon(player: PlayerData) {
       }
     }
     
-    // Create a new Dragon instance with the correct parameters
+    // Create the dragon
     const otherDragon = new RemotePlayerDragon(player.size || 1);
     
     // Set initial health if provided
@@ -479,6 +500,12 @@ function createOtherPlayerDragon(player: PlayerData) {
     console.log(`Set initial position for ${player.name}: ${initialPosition.x.toFixed(2)}, ${initialPosition.y.toFixed(2)}, ${initialPosition.z.toFixed(2)}`);
     console.log(`Set initial rotation for ${player.name}: ${initialRotation.x.toFixed(2)}, ${initialRotation.y.toFixed(2)}, ${initialRotation.z.toFixed(2)}`);
     
+    // Set dragon color if provided
+    if (player.dragonColor) {
+      console.log(`Setting initial dragon color for ${player.name} to ${player.dragonColor}`);
+      otherDragon.setDragonColor(player.dragonColor);
+    }
+    
     // Ensure the world matrix is updated immediately
     otherDragon.body.updateMatrixWorld(true);
     
@@ -513,7 +540,7 @@ function createOtherPlayerDragon(player: PlayerData) {
     healthBarContainer.appendChild(healthBar);
     
     // Store the dragon, label and health bar
-    otherPlayerDragons.set(player.id, { 
+    otherPlayerDragons.set(player.id, {
       dragon: otherDragon, 
       label,
       healthBarContainer,
@@ -548,6 +575,12 @@ function updateOtherPlayerDragon(player: PlayerData) {
   
   // Get the RemotePlayerDragon instance
   const remotePlayerDragon = otherPlayer.dragon as any; // Using any here to access the custom properties
+  
+  // Update dragon color if it changed
+  if (player.dragonColor && remotePlayerDragon.dragonColor !== player.dragonColor) {
+    console.log(`Updating dragon color for ${player.name} from ${remotePlayerDragon.dragonColor} to ${player.dragonColor}`);
+    remotePlayerDragon.setDragonColor(player.dragonColor);
+  }
   
   // Check if this is a large position change that requires teleporting
   const currentPos = otherPlayer.dragon.body.position;
@@ -695,7 +728,7 @@ function removeOtherPlayerDragon(playerId: string) {
 
 // Start the game when the player enters a username
 const startScreen = new StartScreen({
-  onGameStart: (username) => {
+  onGameStart: (username, dragonColor) => {
     // Check if server is available before starting
     if (!networkManager.isServerAvailable()) {
       console.log('Cannot start game: server unavailable');
@@ -708,8 +741,14 @@ const startScreen = new StartScreen({
     // Set the player name in the network manager
     networkManager.setPlayerName(username);
     
-    // Create the dragon now that we have a username
+    // Set the player's dragon color
+    networkManager.setDragonColor(dragonColor);
+    
+    // Create the dragon now that we have a username and color
     dragon = new Dragon(1);
+    
+    // Set the dragon's color
+    dragon.setDragonColor(dragonColor);
     
     // Create a username label above the dragon
     usernameLabel = document.createElement('div');
@@ -997,8 +1036,11 @@ class CollisionFeedback {
 const collisionFeedback = new CollisionFeedback(scene);
 
 // Create the dragon character
-class Dragon {
-  body: THREE.Group;
+export class Dragon {
+  dragonColor: DragonColorType;
+  head: THREE.Object3D;
+  body: THREE.Object3D;
+  scene: THREE.Scene;
   size: number;
   speed: number;
   velocity: THREE.Vector3;
@@ -1027,7 +1069,9 @@ class Dragon {
   lastDamageTime: number = 0;
   
   constructor(size = 1) {
+    this.head = new THREE.Object3D();
     this.body = new THREE.Group();
+    this.scene = scene; // Store reference to scene
     this.size = size;
     this.speed = 0.015;
     this.maxSpeed = 0.12;
@@ -1049,6 +1093,8 @@ class Dragon {
     this.accelerationRate = 0.03;
     this.decelerationRate = 0.06;
     
+    this.dragonColor = DefaultDragonColor;
+    
     // Dragon body parts
     this.createBody();
     
@@ -1068,12 +1114,14 @@ class Dragon {
     // Create cute anime-style materials
     const textureLoader = new THREE.TextureLoader();
     
-    // Colors to match the reference image
-    const bodyColor = 0xff5d4b; // Orange-red
-    const bellyColor = 0xa7e6c8; // Mint green
-    const wingColor = 0x000000; // Black wings
-    const hornColor = 0xd3d3d3; // Light gray for horns
-    const spotColor = 0xff3b21; // Darker red for spots
+    const colorScheme = DragonColors[this.dragonColor];
+    
+    // Colors from the color scheme
+    const bodyColor = colorScheme.body;
+    const bellyColor = colorScheme.belly;
+    const wingColor = colorScheme.wings;
+    const hornColor = colorScheme.horns;
+    const spotColor = colorScheme.spots;
     
     // Main body material
     const bodyMaterial = new THREE.MeshStandardMaterial({ 
@@ -1106,6 +1154,13 @@ class Dragon {
       roughness: 0.3
     });
     
+    // Spot material
+    const spotMaterial = new THREE.MeshStandardMaterial({ 
+      color: spotColor,
+      roughness: 0.3,
+      metalness: 0.1
+    });
+    
     // ===== CHIBI BODY =====
     // Create main dragon body group - more defined, less blob-like
     const bodyGroup = new THREE.Group();
@@ -1114,6 +1169,7 @@ class Dragon {
     const bodyGeometry = new THREE.SphereGeometry(0.5 * this.size, 16, 16);
     const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
     bodyMesh.scale.set(1, 0.9, 0.8); // Less round, more defined
+    bodyMesh.name = 'dragonBody'; // Name for identification
     bodyGroup.add(bodyMesh);
     
     // Belly plate - more defined straight section
@@ -1122,14 +1178,15 @@ class Dragon {
     bellyMesh.rotation.x = Math.PI / 2;
     bellyMesh.position.set(0, -0.1 * this.size, 0);
     bellyMesh.scale.set(0.75, 0.5, 0.3);
+    bellyMesh.name = 'dragonBelly'; // Name for identification
     bodyGroup.add(bellyMesh);
     
     // Add spots like in the reference image
-    const spotMaterial = new THREE.MeshStandardMaterial({ color: spotColor });
     const addSpot = (x: number, y: number, z: number, size: number) => {
       const spotGeometry = new THREE.CircleGeometry(size * this.size, 8);
       const spot = new THREE.Mesh(spotGeometry, spotMaterial);
       spot.position.set(x * this.size, y * this.size, z * this.size);
+      spot.name = 'dragonSpot'; // Name for identification
       
       // Make sure spot faces outward from body center
       spot.lookAt(spot.position.clone().multiplyScalar(2));
@@ -1269,6 +1326,7 @@ class Dragon {
       
       const geometry = new THREE.TubeGeometry(curve, 8, 0.05 * this.size, 8, false);
       const horn = new THREE.Mesh(geometry, hornMaterial);
+      horn.name = 'dragonHorn'; // Name for identification
       hornGroup.add(horn);
       
       hornGroup.position.set(xPos, 0.2 * this.size, 0);
@@ -1845,6 +1903,56 @@ class Dragon {
     }
     
     return fireSuccess;
+  }
+  
+  // Method to set dragon color
+  setDragonColor(color: DragonColorType) {
+    this.dragonColor = color;
+    
+    // Remove existing body and create a new one
+    if (this.scene && this.body.parent) {
+      this.scene.remove(this.body);
+      this.createBody();
+      this.scene.add(this.body);
+    }
+  }
+  
+  // Method to update all dragon parts with the new color
+  updateDragonColor() {
+    // Get the full color scheme for this dragon
+    const colorScheme = DragonColors[this.dragonColor];
+    
+    // Find all mesh components of the dragon and update their color based on their purpose
+    this.body.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        const material = object.material as THREE.MeshStandardMaterial;
+        
+        // Skip if there's no color property
+        if (!material.color) return;
+        
+        // Apply the appropriate color based on the mesh's name
+        if (object.name === 'leftWing' || object.name === 'rightWing') {
+          // Wings
+          material.color.set(colorScheme.wings);
+        } else if (object.name === 'dragonSpot') {
+          // Spots
+          material.color.set(colorScheme.spots);
+        } else if (object.name === 'dragonHorn') {
+          // Horns
+          material.color.set(colorScheme.horns);
+        } else if (object.name === 'dragonBelly') {
+          // Belly
+          material.color.set(colorScheme.belly);
+        } else if (object.name === 'dragonBody' || 
+                  (!object.name.includes('eye') && 
+                   !object.name.includes('pupil') && 
+                   !object.name.includes('nostril') && 
+                   !object.name.includes('mouth'))) {
+          // Body - default for anything not specifically named
+          material.color.set(colorScheme.body);
+        }
+      }
+    });
   }
 }
 

@@ -28,7 +28,8 @@ io.on('connection', (socket) => {
     rotation: { x: 0, y: 0, z: 0 },
     size: 1,
     health: 100,
-    maxHealth: 100
+    maxHealth: 100,
+    dragonColor: "Orange" // Default orange dragon
   });
   
   // Log connection
@@ -48,7 +49,8 @@ io.on('connection', (socket) => {
       rotation: data.rotation,
       size: data.size,
       health: data.health || 100,
-      maxHealth: data.maxHealth || 100
+      maxHealth: data.maxHealth || 100,
+      dragonColor: data.dragonColor || "Orange"
     }));
   
   if (existingPlayers.length > 0) {
@@ -66,6 +68,22 @@ io.on('connection', (socket) => {
   }
   
   // We won't broadcast the player:joined event until they set their name
+  
+  // Handle player setting their dragon color
+  socket.on('player:setDragonColor', (colorValue) => {
+    const playerData = players.get(playerId);
+    if (playerData) {
+      // Update dragon color
+      playerData.dragonColor = colorValue;
+      console.log(`[+] Player ${playerId} set dragon color: ${colorValue}`);
+      
+      // Broadcast the color change to all players
+      io.emit('player:colorChanged', {
+        id: playerId,
+        dragonColor: colorValue
+      });
+    }
+  });
   
   // Handle player setting their name
   socket.on('player:setName', (name) => {
@@ -88,7 +106,8 @@ io.on('connection', (socket) => {
           rotation: playerData.rotation,
           size: playerData.size,
           health: playerData.health,
-          maxHealth: playerData.maxHealth
+          maxHealth: playerData.maxHealth,
+          dragonColor: playerData.dragonColor
         });
         
         // Also send this player's health update to ensure all clients have current data
@@ -110,7 +129,8 @@ io.on('connection', (socket) => {
             rotation: data.rotation,
             size: data.size,
             health: data.health || 100,
-            maxHealth: data.maxHealth || 100
+            maxHealth: data.maxHealth || 100,
+            dragonColor: data.dragonColor || "Orange"
           }));
           
         if (existingNamedPlayers.length > 0) {
