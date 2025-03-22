@@ -1730,35 +1730,186 @@ export class Dragon {
     const objectCenter = new THREE.Vector3();
     boundingBox.getCenter(objectCenter);
     
-    // Get half the size of the object to estimate its radius
+    // Get object size for variable collision detection
     const objectSize = new THREE.Vector3();
     boundingBox.getSize(objectSize);
     
-    // Adjust collision radius based on object type
-    let objectRadius;
-    if (object instanceof THREE.CylinderGeometry || object.name.includes('tower')) {
-      // For towers, use a tighter collision radius
-      objectRadius = Math.max(objectSize.x, objectSize.z) * 0.6;
-    } else {
-      objectRadius = Math.max(objectSize.x, objectSize.z) * 0.5;
+    // SAFE ALTITUDE CHECK:
+    // If the dragon is flying high enough, completely ignore collisions
+    // This creates a "safe zone" above a certain height where you can fly freely
+    const objectTop = objectCenter.y + (objectSize.y / 2);
+    const safeAltitudeThreshold = 10; // Flying higher than 10 units avoids all collisions
+    if (this.body.position.y > (objectTop + safeAltitudeThreshold)) {
+      return false;
     }
     
-    // Calculate distance between dragon and object centers
-    const distance = this.body.position.distanceTo(objectCenter);
+    // Create a larger vertical clearance to make it easier to fly over objects
+    // Check if dragon is clearly above the object
+    const verticalClearance = this.body.position.y - objectTop;
+    if (verticalClearance > this.collisionRadius * 0.5) { // Significantly reduced from 0.8 to 0.5
+      return false;
+    }
     
-    // Check if dragon is close enough horizontally (ignore height differences)
+    // First, check if we're even in the vicinity using a reduced bounding box check
+    // This is a quick rejection test before doing more complex shape detection
     const dragonPos2D = new THREE.Vector2(this.body.position.x, this.body.position.z);
     const objectPos2D = new THREE.Vector2(objectCenter.x, objectCenter.z);
     const horizontalDistance = dragonPos2D.distanceTo(objectPos2D);
     
-    // Height check - if dragon is higher than object + some margin, no collision
-    const verticalClearance = this.body.position.y - (objectCenter.y + objectSize.y * 0.7);
-    if (verticalClearance > this.collisionRadius * 1.5) {
+    // Quick rejection - if we're far away, no need for detailed collision
+    const quickCheckRadius = Math.max(objectSize.x, objectSize.z) * 0.5; // Reduced from 0.6 to 0.5
+    if (horizontalDistance > (this.collisionRadius + quickCheckRadius)) {
       return false;
     }
     
-    // Return true if the dragon is colliding with the object
-    return horizontalDistance < (this.collisionRadius * 1.2 + objectRadius);
+    // Specialized collision detection based on object type
+    if (object.name.includes('tree') || this.isTree(object)) {
+      return this.isCollidingWithTree(object, objectCenter, objectSize);
+    } else if (object.name.includes('rock') || this.isRock(object)) {
+      return this.isCollidingWithRock(object, objectCenter, objectSize);
+    } else if (object.name.includes('tower') || object.name.includes('Tower')) {
+      return this.isCollidingWithTower(object, objectCenter, objectSize);
+    } else {
+      // Default case - use a reduced bounding box for other objects
+      // Significantly smaller collision area for all other objects
+      return horizontalDistance < (this.collisionRadius * 0.7 + quickCheckRadius * 0.6);
+    }
+  }
+  
+  // Helper to identify tree objects by their structure
+  isCollidingWithTree(object: THREE.Object3D, objectCenter: THREE.Vector3, objectSize: THREE.Vector3): boolean {
+    // Trees consist of a cylindrical trunk and a conical top
+    
+    // Get dragon position relative to tree center
+    const relativePosition = this.body.position.clone().sub(objectCenter);
+    
+    // Check horizontal distance to tree center
+    const horizontalDist = Math.sqrt(
+      relativePosition.x * relativePosition.x + 
+      relativePosition.z * relativePosition.z
+    );
+    
+    // Trunk collision (cylinder)
+    const trunkRadius = 0.35; // Reduced from 0.4 to 0.35
+    const trunkHeight = 3; // Tree trunk height is about 3 units
+    const trunkBottom = objectCenter.y - (objectSize.y / 2); // Bottom of the tree
+    const trunkTop = trunkBottom + trunkHeight;
+    
+    // Check if we're at trunk height and not clearly above it
+    if (this.body.position.y < trunkTop + this.collisionRadius * 0.3) { // Added small buffer above trunk
+      // Colliding with trunk?
+      if (horizontalDist < (trunkRadius + this.collisionRadius * 0.6)) { // Reduced from 0.8 to 0.6
+        return true;
+      }
+    }
+    
+    // Tree top collision (cone)
+    const coneBaseRadius = 1.8; // Reduced from 2.0 to 1.8
+    const coneHeight = 4; // Cone height from the tree geometry
+    const coneBottom = trunkTop;
+    const coneTop = coneBottom + coneHeight;
+    
+    // Check if we're at cone height
+    // Add buffer zones at bottom and top of cone for more forgiving collisions
+    const bottomBuffer = 0.3; // Buffer at bottom of cone
+    const topBuffer = 0.6; // Larger buffer at top of cone (pointy part)
+    
+    if (this.body.position.y > (coneBottom - bottomBuffer) && 
+        this.body.position.y < (coneTop - topBuffer)) {
+      
+      // Calculate radius at current height (tapers from base to tip)
+      // Height ratio is now based on the buffered height
+      const effectiveHeight = Math.min(
+        Math.max(this.body.position.y - coneBottom, 0),
+        coneHeight - topBuffer
+      );
+      
+      const heightRatio = 1 - (effectiveHeight / coneHeight);
+      const radiusAtHeight = coneBaseRadius * heightRatio;
+      
+      // Is dragon colliding with the cone at this height?
+      // Use a more forgiving collision radius
+      if (horizontalDist < (radiusAtHeight + this.collisionRadius * 0.6)) { // Reduced from 0.7 to 0.6
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  isCollidingWithRock(object: THREE.Object3D, objectCenter: THREE.Vector3, objectSize: THREE.Vector3): boolean {
+    // Rocks are roughly spherical or semi-spherical
+    const rockRadius = Math.max(objectSize.x, objectSize.z) * 0.5; // Reduced radius for more precise collision
+    
+    // Distance from dragon to rock center
+    const distance = this.body.position.distanceTo(objectCenter);
+    
+    // If the rock is partially embedded in the ground, adjust the calculation
+    const adjustedDistance = distance;
+    
+    // Use a slightly reduced collision radius for rocks
+    return adjustedDistance < (rockRadius + this.collisionRadius * 0.7);
+  }
+  
+  isCollidingWithTower(object: THREE.Object3D, objectCenter: THREE.Vector3, objectSize: THREE.Vector3): boolean {
+    // Towers are cylindrical
+    
+    // Get dragon position relative to tower center
+    const relativePosition = this.body.position.clone().sub(objectCenter);
+    
+    // Check horizontal distance to tower center
+    const horizontalDist = Math.sqrt(
+      relativePosition.x * relativePosition.x + 
+      relativePosition.z * relativePosition.z
+    );
+    
+    // Tower is approximated as a cylinder
+    const towerRadius = Math.min(objectSize.x, objectSize.z) * 0.4; // Tighter radius for towers
+    
+    // Use a reduced collision radius for towers
+    return horizontalDist < (towerRadius + this.collisionRadius * 0.6);
+  }
+  
+  // Helper function to determine if an object is a tree based on its structure
+  isTree(object: THREE.Object3D): boolean {
+    // Check if it's a group with a trunk (cylinder) and top (cone)
+    if (object instanceof THREE.Group && object.children.length >= 2) {
+      let hasTrunk = false;
+      let hasTop = false;
+      
+      object.children.forEach(child => {
+        if (child instanceof THREE.Mesh) {
+          if (child.geometry instanceof THREE.CylinderGeometry) {
+            hasTrunk = true;
+          } else if (child.geometry instanceof THREE.ConeGeometry) {
+            hasTop = true;
+          }
+        }
+      });
+      
+      return hasTrunk && hasTop;
+    }
+    
+    return false;
+  }
+  
+  // Helper function to determine if an object is a rock based on its structure
+  isRock(object: THREE.Object3D): boolean {
+    // Check if it has a distinctive rock geometry
+    if (object instanceof THREE.Group && object.children.length > 0) {
+      for (const child of object.children) {
+        if (child instanceof THREE.Mesh) {
+          // Rocks typically use these geometries
+          if (child.geometry instanceof THREE.DodecahedronGeometry || 
+              child.geometry instanceof THREE.IcosahedronGeometry ||
+              child.geometry instanceof THREE.OctahedronGeometry) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
   }
   
   handleCollision(object: THREE.Object3D, previousPosition: THREE.Vector3) {
@@ -1772,15 +1923,21 @@ export class Dragon {
       .subVectors(this.body.position, objectCenter)
       .normalize();
     
-    // Move dragon back to previous position
-    this.body.position.copy(previousPosition);
+    // Instead of moving completely back to previous position, only move back partially
+    // This creates a very gentle nudge rather than a harsh knockback
+    const currentPosition = this.body.position.clone();
+    const backAmount = 0.2; // Only move back 20% of the way (drastically reduced from 40%)
+    this.body.position.lerpVectors(currentPosition, previousPosition, backAmount);
     
-    // Apply stronger repulsion in the opposite direction
-    this.velocity.x = awayDirection.x * this.maxSpeed * 0.5; // Increased from 0.3 to 0.5
-    this.velocity.z = awayDirection.z * this.maxSpeed * 0.5;
+    // Apply very gentle repulsion in the opposite direction
+    this.velocity.x = awayDirection.x * this.maxSpeed * 0.1; // Reduced from 0.2 to 0.1 (90% reduction from original)
+    this.velocity.z = awayDirection.z * this.maxSpeed * 0.1;
     
-    // Add a stronger upward component to help dragon fly over obstacles
-    this.velocity.y = Math.max(this.velocity.y, 0.05); // Increased from 0.02 to 0.05
+    // Add a very mild upward component to help dragon fly over obstacles
+    this.velocity.y = Math.max(this.velocity.y, 0.01); // Reduced from 0.02 to 0.01
+    
+    // Reduced collision cooldown to allow for faster recovery
+    this.collisionCooldown = 100; // Reduced from 150ms to 100ms
     
     // Create visual feedback for collision, but only if it's been a while since last collision
     const now = Date.now();
@@ -1791,8 +1948,9 @@ export class Dragon {
         awayDirection.multiplyScalar(-this.collisionRadius)
       );
       
+      // Use more subtle visual feedback
       collisionFeedback.createCollisionParticles(collisionPoint, 0xffcc00);
-      collisionFeedback.startCameraShake(0.08, 200); // Increased shake intensity
+      collisionFeedback.startCameraShake(0.02, 80); // Reduced from 0.03/100 to 0.02/80
       
       this.lastCollisionTime = now;
     }
