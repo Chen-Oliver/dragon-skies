@@ -42,11 +42,25 @@ export class StartScreen {
     inputLabel.textContent = 'Enter your username:';
     inputLabel.style.display = 'block';
     inputLabel.style.marginBottom = '5px';
+    inputLabel.style.fontWeight = 'bold';
     
     this.usernameInput = document.createElement('input');
     this.usernameInput.type = 'text';
     this.usernameInput.placeholder = 'Your username';
     this.usernameInput.maxLength = 16;
+    this.usernameInput.required = true;
+    this.usernameInput.style.border = '2px solid #4CAF50';
+    this.usernameInput.style.boxShadow = '0 0 5px rgba(76, 175, 80, 0.5)';
+    
+    // Create error message for empty username
+    const usernameError = document.createElement('div');
+    usernameError.textContent = 'Username is required to play!';
+    usernameError.style.color = '#FF5252';
+    usernameError.style.fontSize = '14px';
+    usernameError.style.marginTop = '-15px';
+    usernameError.style.marginBottom = '15px';
+    usernameError.style.display = 'none';
+    usernameError.style.fontWeight = 'bold';
     
     // Create color selector
     const colorSelectorLabel = document.createElement('label');
@@ -136,17 +150,40 @@ export class StartScreen {
     `;
     this.pendingMessage.style.display = 'none';
     
-    // Add event listener for start button
-    this.startButton.addEventListener('click', this.handleStart.bind(this));
+    // Add event listeners for the username input
+    this.usernameInput.addEventListener('input', () => {
+      // Update button text based on whether there's a username
+      if (this.usernameInput.value.trim()) {
+        this.startButton.textContent = 'Start Game';
+        
+        // Reset input styling
+        this.usernameInput.style.border = '2px solid #4CAF50';
+        this.usernameInput.style.boxShadow = '0 0 5px rgba(76, 175, 80, 0.5)';
+        
+        // Hide error message
+        const errorMessage = this.container.querySelector('div[style*="color: #FF5252"]') as HTMLElement;
+        if (errorMessage) {
+          errorMessage.style.display = 'none';
+        }
+      } else {
+        this.startButton.textContent = 'Start Game';
+      }
+    });
+    
+    // Additional functionality for Enter key in username field
     this.usernameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         this.handleStart();
       }
     });
     
+    // Add event listener for start button
+    this.startButton.addEventListener('click', this.handleStart.bind(this));
+    
     // Append elements
     content.appendChild(title);
     content.appendChild(inputLabel);
+    content.appendChild(usernameError);
     content.appendChild(this.usernameInput);
     content.appendChild(colorSelectorLabel);
     content.appendChild(this.colorSelectorContainer);
@@ -249,12 +286,35 @@ export class StartScreen {
     const username = this.usernameInput.value.trim();
     
     if (!username) {
+      // Show error message
+      const errorMessage = this.container.querySelector('div[style*="color: #FF5252"]') as HTMLElement;
+      if (errorMessage) {
+        errorMessage.style.display = 'block';
+      }
+      
+      // Highlight input with red border
+      this.usernameInput.style.border = '2px solid #FF5252';
+      this.usernameInput.style.boxShadow = '0 0 5px rgba(255, 82, 82, 0.5)';
+      
       // Shake input if empty
       this.usernameInput.style.animation = 'none';
       setTimeout(() => {
         this.usernameInput.style.animation = 'shake 0.5s';
       }, 10);
+      
+      // Focus the input
+      this.usernameInput.focus();
       return;
+    } else {
+      // Hide error message if it exists
+      const errorMessage = this.container.querySelector('div[style*="color: #FF5252"]') as HTMLElement;
+      if (errorMessage) {
+        errorMessage.style.display = 'none';
+      }
+      
+      // Reset input styling
+      this.usernameInput.style.border = '2px solid #4CAF50';
+      this.usernameInput.style.boxShadow = '0 0 5px rgba(76, 175, 80, 0.5)';
     }
     
     // First check if server is available
