@@ -81,7 +81,7 @@ export class NetworkManager {
   private positionBatchQueue: {position: any, rotation: any, size: number} | null = null;
   private localPlayerLevel: number = 1; // Track the local player's level
   
-  constructor(serverUrl: string = 'http://localhost:3000') {
+  constructor(serverUrl: string = 'wss://socket.oliverchen.me') {    
     // Connect to the WebSocket server
     this.socket = socketIOClient(serverUrl);
     

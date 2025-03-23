@@ -31,3 +31,6 @@ out/
 *.njsproj
 *.sln
 *.sw?
+
+key.pem
+cert.pem

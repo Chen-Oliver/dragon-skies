@@ -1,10 +1,32 @@
-import { createServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
 import { Server } from 'socket.io';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
-// Create HTTP server
-const httpServer = createServer();
-const io = new Server(httpServer, {
+// SSL Certificate Configuration
+let server;
+
+try {
+  // Load SSL certificates
+  const sslOptions = {
+    key: fs.readFileSync(process.env.SSL_KEY_PATH || '/etc/ssl/private/key.pem'),
+    cert: fs.readFileSync(process.env.SSL_CERT_PATH || '/etc/ssl/certs/cert.pem')
+  };
+  
+  // Create HTTPS server with SSL certificates
+  server = createHttpsServer(sslOptions);
+  console.log('🔒 Running server in secure mode (HTTPS/WSS)');
+} catch (error) {
+  console.error('❌ Fatal: Failed to load SSL certificates:', error.message);
+  console.error('Server cannot start without valid SSL certificates. Please check paths:');
+  console.error(`- Key path: ${process.env.SSL_KEY_PATH || '/etc/ssl/private/key.pem'}`);
+  console.error(`- Cert path: ${process.env.SSL_CERT_PATH || '/etc/ssl/certs/cert.pem'}`);
+  process.exit(1);
+}
+
+// Create Socket.IO instance with the server
+const io = new Server(server, {
   cors: {
     origin: "*", // Allow connections from any origin (during development)
     methods: ["GET", "POST"]
@@ -415,9 +437,8 @@ io.on('connection', (socket) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
+const PORT = process.env.PORT || 8000;
+server.listen(PORT, () => {
   console.log(`🐉 Dragon Skies multiplayer server running on port ${PORT}`);
-  console.log(`Message batching enabled for improved network efficiency`);
   console.log(`Ready for players to connect!`);
-}); 
+});
