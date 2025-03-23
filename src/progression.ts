@@ -34,7 +34,7 @@ export class ProgressionSystem {
   private healthBar: HTMLDivElement | null = null;
   private levelIndicator: HTMLDivElement | null = null;
   private notificationElement: HTMLSpanElement | null = null;
-  private notificationTimeout: number | undefined;
+  private notificationTimeout: ReturnType<typeof setTimeout> | undefined;
   
   // Stats
   private currentHealth: number = 100;

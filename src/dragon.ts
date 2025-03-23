@@ -572,9 +572,6 @@ export class Dragon {
       this.velocity.y -= this.gravityForce;
     }
     
-    // Check for collisions with buildings
-    this.checkBuildingCollisions(previousPosition);
-    
     // World boundaries
     if (this.body.position.x > this.worldBoundary) {
       this.body.position.x = this.worldBoundary;
@@ -649,16 +646,6 @@ export class Dragon {
     this.speed = 0.12 + this.currentAcceleration;
   }
   
-  checkBuildingCollisions(previousPosition: THREE.Vector3) {
-    // This function would be used to check collisions with buildings
-    // and other static objects in the environment
-    // We'll keep it as a placeholder for now
-  }
-  
-  checkObstacleCollisions(previousPosition: THREE.Vector3) {
-    // This function would be used to check collisions with other obstacles
-    // We'll keep it as a placeholder for now
-  }
   
   isCollidingWithObject(object: THREE.Object3D): boolean {
     // Get the world position of the object
@@ -814,6 +801,7 @@ export class Dragon {
         return; // Exit after handling first collision
       }
     }
+
   }
   
   // Check collisions with any array of objects
@@ -832,3 +820,4 @@ export class Dragon {
     }
   }
 } 
+ 

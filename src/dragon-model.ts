@@ -236,9 +236,6 @@ export class DragonModelCreator {
     headGroup.position.set(0, 0.3 * size, 0.1 * size);
     body.add(headGroup);
     
-    // ===== SMALL WINGS =====
-    let leftWing: THREE.Mesh, rightWing: THREE.Mesh;
-    
     const createWing = (isLeft: boolean) => {
       const wingGroup = new THREE.Group();
       
@@ -292,11 +289,9 @@ export class DragonModelCreator {
       // Position wings on the back like in the reference
       if (isLeft) {
         wingGroup.position.set(-0.25 * size, 0.2 * size, -0.1 * size);
-        leftWing = wingMembrane;
         wingMembrane.name = "leftWing";
       } else {
         wingGroup.position.set(0.25 * size, 0.2 * size, -0.1 * size);
-        rightWing = wingMembrane;
         wingMembrane.name = "rightWing";
       }
       

@@ -65,7 +65,6 @@ export class UsernameDisplay {
     
     // Check if behind camera
     const vector = new THREE.Vector3();
-    const widthHalfVector = new THREE.Vector3(widthHalf, 0, 0);
     vector.subVectors(position, this.camera.position);
     
     // Hide label if behind camera or too far

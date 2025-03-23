@@ -1,6 +1,5 @@
 import './style.css'
 import * as THREE from 'three'
-import * as CANNON from 'cannon-es'
 import { Environment } from './environment'
 import { ExperienceOrbs } from './experience-orbs'
 import { FireballSystem } from './fireballs'
@@ -8,7 +7,6 @@ import { LevelSystem, LEVEL_THRESHOLDS } from './level-system'
 import { StartScreen } from './start-screen'
 import { NetworkManager, PlayerData } from './network-manager'
 import { DragonColorType, DragonColors, DefaultDragonColor } from './dragon'
-import { PointerLockControlsCannon } from './PointerLockControlsCannon'
 import { notificationSystem } from './notification-system'
 
 // Polyfill for requestAnimationFrame to ensure it continues in background
@@ -2335,7 +2333,7 @@ function animate() {
   }
   
   // Update username position above dragon
-  if (usernameLabel && dragon.body.visible) {
+  if (usernameLabel && dragon && dragon.body && dragon.body.visible) {
     const dragonScreenPos = new THREE.Vector3();
     dragonScreenPos.setFromMatrixPosition(dragon.body.matrixWorld);
     dragonScreenPos.project(camera);
@@ -2405,13 +2403,15 @@ function animate() {
   fireballSystem.update(deltaTime);
   
   // Check for dragon collision with orbs
-  const collectedCount = experienceOrbs.checkCollisions(dragon.body.position, 2);
-  
-  // If orbs were collected, add experience and show feedback
-  if (collectedCount > 0) {
-    // Add exactly 10 XP per orb
-    const expGained = collectedCount * 10;
-    levelSystem.addExperience(expGained);
+  if (dragon && dragon.body) {
+    const collectedCount = experienceOrbs.checkCollisions(dragon.body.position, 2);
+    
+    // If orbs were collected, add experience and show feedback
+    if (collectedCount > 0) {
+      // Add exactly 10 XP per orb
+      const expGained = collectedCount * 10;
+      levelSystem.addExperience(expGained);
+    }
   }
   
   // Check fireball collisions with environment objects

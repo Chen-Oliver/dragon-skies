@@ -58,10 +58,5 @@ export class CameraController {
     const tiltAmount = Math.max(-0.2, Math.min(0.2, -this.dragon.velocity.y * 2));
     this.camera.rotation.z = tiltAmount;
   }
-  
-  // Shake the camera (for collisions, etc.)
-  shake(intensity: number = 0.1, duration: number = 300) {
-    // This would call the collision feedback system's camera shake
-    // We'll leave this as a placeholder if needed later
-  }
+
 } 
