@@ -64,17 +64,12 @@ fireballSystem.onFireballCreated((position, direction, damage, radius) => {
 
 // When remote fireballs are received, create them locally
 networkManager.onPlayerFireball((fireballData) => {
-  console.log(`Main: Received remote fireball from player ID ${fireballData.playerId}`);
-  console.log(`Main: Remote fireball data: position=(${fireballData.position.x.toFixed(2)}, ${fireballData.position.y.toFixed(2)}, ${fireballData.position.z.toFixed(2)}), damage=${fireballData.damage}, radius=${fireballData.radius}`);
-  
   if (!fireballData.playerId) {
-    console.error('Remote fireball missing playerId, cannot create!');
     return;
   }
   
   const remoteFB = fireballSystem.createRemoteFireball(fireballData);
   if (!remoteFB) {
-    console.error('Failed to create remote fireball!');
   }
 });
 
@@ -82,8 +77,7 @@ networkManager.onPlayerFireball((fireballData) => {
 networkManager.onPlayerDamage((data) => {
   // Only process if we have a dragon
   if (dragon) {
-    console.log(`Taking ${data.damage} damage from player ${data.sourcePlayerId}`);
-    
+
     // Update local health
     levelSystem.takeDamage(data.damage);
     
@@ -104,8 +98,7 @@ networkManager.onPlayerDamage((data) => {
 
 // Handle health updates for other players
 networkManager.onPlayerHealthUpdated((playerId, health, maxHealth) => {
-  console.log(`Health update for player ${playerId}: ${health}/${maxHealth}`);
-  
+
   // Update the health bar for the player if they exist in our map
   const otherPlayer = otherPlayerDragons.get(playerId);
   if (otherPlayer) {
@@ -147,8 +140,7 @@ networkManager.onPlayerHealthUpdated((playerId, health, maxHealth) => {
 
 // Handle player respawn
 networkManager.onPlayerRespawn((data) => {
-  console.log(`Received respawn event with health: ${data.health}/${data.maxHealth}`);
-  
+
   // Reset local player
   if (dragon) {
     // Ensure materials are reset to normal
@@ -203,11 +195,9 @@ setInterval(() => {
 
 // Handle initial player list
 networkManager.onPlayersInitial((players: PlayerData[]) => {
-  console.log('Creating dragons for initial players:', players.length);
-  
+
   // Clean up any existing dragons first
   Array.from(otherPlayerDragons.keys()).forEach(id => {
-    console.log(`Cleaning up existing dragon before initialization: ${id}`);
     removeOtherPlayerDragon(id);
   });
   
@@ -215,7 +205,6 @@ networkManager.onPlayersInitial((players: PlayerData[]) => {
   players.forEach(player => {
     // Skip players without positions or who don't have a proper name yet
     if (!player.position || player.name === 'Unknown Player') {
-      console.log(`Skipping player without position or proper name: ${player.id}`);
       return;
     }
     
@@ -223,7 +212,6 @@ networkManager.onPlayersInitial((players: PlayerData[]) => {
     if (!otherPlayerDragons.has(player.id)) {
       createOtherPlayerDragon(player);
     } else {
-      console.log(`Dragon already exists for player ${player.name} (${player.id})`);
     }
   });
   
@@ -233,11 +221,9 @@ networkManager.onPlayersInitial((players: PlayerData[]) => {
 
 // Handle player joining events
 networkManager.onPlayerJoined((player: PlayerData) => {
-  console.log(`Another player joined: ${player.name}`);
   
   // Only create dragons for players who have set their username and have position data
   if (player.name === 'Unknown Player' || !player.position) {
-    console.log('Player has no username or position yet, not creating dragon');
     return;
   }
   
@@ -246,7 +232,6 @@ networkManager.onPlayerJoined((player: PlayerData) => {
   
   // Remove any existing dragon for this player to prevent duplicates
   if (otherPlayerDragons.has(player.id)) {
-    console.log(`Removing existing dragon for player ${player.id} before creating a new one`);
     removeOtherPlayerDragon(player.id);
   }
   
@@ -256,7 +241,6 @@ networkManager.onPlayerJoined((player: PlayerData) => {
 
 // Handle player leaving events
 networkManager.onPlayerLeft((player: PlayerData) => {
-  console.log(`Player left: ${player.name}`);
   
   // Show notification that player left
   notificationSystem.notifyLeave(player.name);
@@ -267,12 +251,10 @@ networkManager.onPlayerLeft((player: PlayerData) => {
 
 // Handle player color changes
 networkManager.onPlayerColorChanged((playerId, dragonColor) => {
-  console.log(`Player ${playerId} changed dragon color to ${dragonColor}`);
   const otherDragonData = otherPlayerDragons.get(playerId);
   if (otherDragonData) {
     otherDragonData.dragon.setDragonColor(dragonColor);
   } else {
-    console.log(`Cannot update dragon color: no dragon found for player ${playerId}`);
   }
 });
 
@@ -284,13 +266,10 @@ function validateDragonObjects() {
   // Check for orphaned dragons in the otherPlayerDragons map
   Array.from(otherPlayerDragons.keys()).forEach(dragonId => {
     if (!connectedPlayerIds.includes(dragonId)) {
-      console.log(`Found orphaned dragon with ID ${dragonId} - removing it`);
       removeOtherPlayerDragon(dragonId);
     }
   });
   
-  // Log the state after cleanup for debugging
-  console.log(`After validation: ${otherPlayerDragons.size} dragons for ${connectedPlayerIds.length} connected players`);
 }
 
 // Run validation more frequently to clean up any orphaned dragons
@@ -335,17 +314,14 @@ networkManager.onPlayerLevelChanged((player: PlayerData) => {
 
 // Create a dragon for another player
 function createOtherPlayerDragon(player: PlayerData) {
-  console.log(`Creating dragon for player with data:`, player);
   
   // Validate player data
   if (!player.id || !player.position || !player.rotation) {
-    console.error(`Cannot create dragon: missing required player data`, player);
     return;
   }
   
   // Double check we don't already have this dragon
   if (otherPlayerDragons.has(player.id)) {
-    console.warn(`Attempted to create duplicate dragon for ${player.name} (${player.id})`);
     return;
   }
   
@@ -477,13 +453,9 @@ function createOtherPlayerDragon(player: PlayerData) {
     otherDragon.body.rotation.copy(initialRotation);
     otherDragon.targetRotation.copy(initialRotation);
     
-    // Log the initial positions
-    console.log(`Set initial position for ${player.name}: ${initialPosition.x.toFixed(2)}, ${initialPosition.y.toFixed(2)}, ${initialPosition.z.toFixed(2)}`);
-    console.log(`Set initial rotation for ${player.name}: ${initialRotation.x.toFixed(2)}, ${initialRotation.y.toFixed(2)}, ${initialRotation.z.toFixed(2)}`);
     
     // Set dragon color if provided
     if (player.dragonColor) {
-      console.log(`Setting initial dragon color for ${player.name} to ${player.dragonColor}`);
       otherDragon.setDragonColor(player.dragonColor);
     }
     
@@ -529,9 +501,7 @@ function createOtherPlayerDragon(player: PlayerData) {
       healthBar
     });
     
-    console.log(`Successfully created dragon for player ${player.name} (${player.id})`);
   } catch (error) {
-    console.error(`Failed to create dragon for player ${player.name} (${player.id}):`, error);
   }
 }
 
@@ -543,24 +513,17 @@ function updateOtherPlayerDragon(player: PlayerData) {
   }
   
   if (!otherPlayer.dragon.body) {
-    console.error(`Dragon body is null for player ${player.id}`);
     return;
   }
   
   // Only log periodically to avoid flooding the console
   const now = Date.now();
-  if (now % 3000 < 50) { // Log approximately every 3 seconds
-    console.log(`Updating dragon for player ${player.name} (${player.id})`);
-    console.log(`  Current position: ${otherPlayer.dragon.body.position.x.toFixed(2)}, ${otherPlayer.dragon.body.position.y.toFixed(2)}, ${otherPlayer.dragon.body.position.z.toFixed(2)}`);
-    console.log(`  Target position: ${player.position.x.toFixed(2)}, ${player.position.y.toFixed(2)}, ${player.position.z.toFixed(2)}`);
-  }
   
   // Get the RemotePlayerDragon instance
   const remotePlayerDragon = otherPlayer.dragon as any; // Using any here to access the custom properties
   
   // Update dragon color if it changed
   if (player.dragonColor && remotePlayerDragon.dragonColor !== player.dragonColor) {
-    console.log(`Updating dragon color for ${player.name} from ${remotePlayerDragon.dragonColor} to ${player.dragonColor}`);
     remotePlayerDragon.setDragonColor(player.dragonColor);
   }
   
@@ -570,8 +533,6 @@ function updateOtherPlayerDragon(player: PlayerData) {
   const distance = currentPos.distanceTo(newPos);
   
   if (distance > 10) {
-    // This is a large jump, use teleport
-    console.log(`Teleporting dragon for ${player.name} - distance: ${distance.toFixed(2)}`);
     const newRot = new THREE.Euler(player.rotation.x, player.rotation.y, player.rotation.z);
     remotePlayerDragon.teleportTo(newPos, newRot);
     remotePlayerDragon.lastUpdateTime = now;
@@ -601,7 +562,6 @@ function updateOtherPlayerDragon(player: PlayerData) {
   if (player.health !== undefined) {
     // Log health changes when they occur
     if (remotePlayerDragon.health !== player.health) {
-      console.log(`Player ${player.name} health changed: ${remotePlayerDragon.health} -> ${player.health}`);
       
       // If health decreased, show hit effect
       if (player.health < remotePlayerDragon.health) {
@@ -631,20 +591,14 @@ function updateOtherPlayerDragon(player: PlayerData) {
       }
     }
   }
-  
-  // Only log periodically
-  if (now % 3000 < 50) {
-    console.log(`  New target position: ${remotePlayerDragon.targetPosition.x.toFixed(2)}, ${remotePlayerDragon.targetPosition.y.toFixed(2)}, ${remotePlayerDragon.targetPosition.z.toFixed(2)}`);
-  }
+
 }
 
 // Remove another player's dragon
 function removeOtherPlayerDragon(playerId: string) {
-  console.log(`Attempting to remove dragon for player: ${playerId}`);
   
   const otherPlayer = otherPlayerDragons.get(playerId);
   if (!otherPlayer) {
-    console.log(`No dragon found for player ${playerId}`);
     return;
   }
   
@@ -675,36 +629,26 @@ function removeOtherPlayerDragon(playerId: string) {
       
       // Remove from scene
       scene.remove(otherPlayer.dragon.body);
-      console.log(`Removed dragon body from scene for player ${playerId}`);
     } else {
-      console.warn(`Dragon body for player ${playerId} was null or undefined`);
     }
     
     // Remove the username label
     if (otherPlayer.label && document.body.contains(otherPlayer.label)) {
       document.body.removeChild(otherPlayer.label);
-      console.log(`Removed username label for player ${playerId}`);
     } else {
-      console.warn(`Username label for player ${playerId} was not in the DOM`);
     }
     
     // Remove health bar
     if (otherPlayer.healthBarContainer && document.body.contains(otherPlayer.healthBarContainer)) {
       document.body.removeChild(otherPlayer.healthBarContainer);
-      console.log(`Removed health bar for player ${playerId}`);
     } else {
-      console.warn(`Health bar for player ${playerId} was not in the DOM`);
     }
     
     // Remove from the map
     otherPlayerDragons.delete(playerId);
-    console.log(`Removed player ${playerId} from otherPlayerDragons map (${otherPlayerDragons.size} dragons remaining)`);
   } catch (error) {
-    console.error(`Error removing dragon for player ${playerId}:`, error);
-    
     // Force removal from the map even if there was an error in cleanup
     otherPlayerDragons.delete(playerId);
-    console.log(`Forcefully removed player ${playerId} from map after error`);
   }
 }
 
@@ -713,7 +657,6 @@ const startScreen = new StartScreen({
   onGameStart: (username, dragonColor) => {
     // Check if server is available before starting
     if (!networkManager.isServerAvailable()) {
-      console.log('Cannot start game: server unavailable');
       return;
     }
     
@@ -747,7 +690,6 @@ const startScreen = new StartScreen({
 
 // Track server availability and update the start screen
 networkManager.onServerStatusChange((isAvailable) => {
-  console.log(`Server availability changed: ${isAvailable ? 'ONLINE' : 'OFFLINE'}`);
   startScreen.setServerAvailability(isAvailable);
   
   // If server becomes unavailable during gameplay, show a message
@@ -2014,13 +1956,10 @@ export class Dragon {
     // Get level stats for damage
     const stats = levelSystem.getStats();
     
-    console.log(`Attempting to fire fireball from position (${fireballPosition.x.toFixed(2)}, ${fireballPosition.y.toFixed(2)}, ${fireballPosition.z.toFixed(2)})`);
-    
     // Fire fireball with damage from level system - passing true for isLocal parameter
     const fireSuccess = fireballSystem.fire(fireballPosition, cameraForward, stats.damage, true);
     
     if (fireSuccess) {
-      console.log(`Fireball fired successfully!`);
       
       // Add a slight backward force when shooting
       this.velocity.sub(cameraForward.clone().multiplyScalar(0.03));
@@ -2205,7 +2144,6 @@ const followCamera = () => {
 function handlePlayerDeath() {
   if (!dragon) return;
   
-  console.log('Player died!');
   
   // Set player as dead immediately to prevent movement and shooting
   isPlayerDead = true;
@@ -2353,8 +2291,6 @@ function animate() {
   otherPlayerDragons.forEach((otherPlayer, playerId) => {
     // Verify player still exists in the network manager's player list
     if (!connectedPlayerIds.includes(playerId)) {
-      // Found a ghost dragon - remove it
-      console.log(`Found ghost dragon for player ${playerId} during render loop - removing`);
       removeOtherPlayerDragon(playerId);
       return; // Skip rest of processing for this dragon
     }

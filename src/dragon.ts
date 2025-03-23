@@ -708,8 +708,6 @@ export class Dragon {
   }
   
   die() {
-    // Handle dragon death
-    console.log("Dragon died!");
     
     // Reset health and position
     this.health = this.maxHealth;

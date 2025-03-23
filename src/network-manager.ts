@@ -107,7 +107,6 @@ export class NetworkManager {
   private setupEventListeners() {
     // Socket connection events
     this.socket.on('connect', () => {
-      console.log('Connected to server!');
       this.serverAvailable = true;
       if (this.onServerStatusChangeCallback) {
         this.onServerStatusChangeCallback(true);
@@ -115,7 +114,6 @@ export class NetworkManager {
     });
     
     this.socket.on('connect_error', (error: any) => {
-      console.error('Connection error:', error);
       this.serverAvailable = false;
       if (this.onServerStatusChangeCallback) {
         this.onServerStatusChangeCallback(false);
@@ -123,7 +121,6 @@ export class NetworkManager {
     });
     
     this.socket.on('disconnect', (reason: string) => {
-      console.log(`Disconnected from server: ${reason}`);
       this.serverAvailable = false;
       if (this.onServerStatusChangeCallback) {
         this.onServerStatusChangeCallback(false);
@@ -132,18 +129,15 @@ export class NetworkManager {
     
     // Handle receiving player's ID from server
     this.socket.on('player:id', (id: string) => {
-      console.log(`Received player ID: ${id}`);
       this.playerId = id;
     });
     
     // Handle receiving initial players list
     this.socket.on('players:initial', (players: PlayerData[]) => {
-      console.log(`Received initial player list:`, players);
       
       // Add each player to our map
       players.forEach(player => {
         if (player.id !== this.playerId) {
-          console.log(`Adding existing player: ${player.name} (${player.id})`);
           this.players.set(player.id, player);
         }
       });
@@ -159,11 +153,9 @@ export class NetworkManager {
     
     // Handle new player joining
     this.socket.on('player:joined', (player: PlayerData) => {
-      console.log(`Player joined with data:`, player);
       
       // Skip adding ourselves
       if (player.id === this.playerId) {
-        console.log(`Skipping self-join event`);
         return;
       }
       
@@ -181,7 +173,6 @@ export class NetworkManager {
     
     // Handle player leaving
     this.socket.on('player:left', (player: PlayerData) => {
-      console.log(`Player left: ${player.name} (${player.id})`);
       
       // Remove from players map
       this.players.delete(player.id);
@@ -194,22 +185,17 @@ export class NetworkManager {
         this.onPlayerLeftCallback(player);
       }
       
-      // Log the current player count after removal
-      console.log(`Players remaining after ${player.name} left: ${this.players.size}`);
     });
     
     // Handle player name changes
     this.socket.on('player:nameChanged', (player: PlayerData) => {
-      console.log(`Player name changed:`, player);
       
       // Update in players map
       if (this.players.has(player.id)) {
         const existingPlayer = this.players.get(player.id)!;
         existingPlayer.name = player.name;
         this.players.set(player.id, existingPlayer);
-        console.log(`Updated player name in map: ${player.name} (${player.id})`);
       } else {
-        console.log(`Warning: Received name change for unknown player: ${player.id}`);
       }
       
       // Update player list UI
@@ -244,7 +230,6 @@ export class NetworkManager {
         
         // Log significant teleports for debugging
         if (isSignificantChange) {
-          console.log(`Player teleport detected for ${player.name}:`, prevPos, '->', data.position);
         }
         
         // Call callback if set, with priority flag for significant changes
@@ -252,7 +237,6 @@ export class NetworkManager {
           this.onPlayerPositionUpdatedCallback(player);
         }
       } else {
-        console.log(`Received position update for unknown player: ${data.id}`);
       }
     });
     
@@ -261,35 +245,27 @@ export class NetworkManager {
       try {
         // Basic validation
         if (!data || !data.playerId || !data.position || !data.direction) {
-          console.error('Received invalid fireball data', data);
           return;
         }
         
         // Skip our own fireballs as they're already rendered locally
         if (data.playerId === this.playerId) {
-          console.log('Received our own fireball event (ignored)');
           return;
         }
-        
-        console.log(`Received fireball from player ${data.playerId} at position: ${data.position.x.toFixed(2)}, ${data.position.y.toFixed(2)}, ${data.position.z.toFixed(2)}`);
-        console.log(`Fireball direction: ${data.direction.x.toFixed(2)}, ${data.direction.y.toFixed(2)}, ${data.direction.z.toFixed(2)}`);
         
         // Find player name for better logging
         let playerName = "Unknown";
         if (this.players.has(data.playerId)) {
           playerName = this.players.get(data.playerId)!.name;
         }
-        console.log(`Player ${playerName} fired a fireball`);
         
         // Call callback if set
         if (this.onPlayerFireballCallback) {
-          console.log('Calling fireball callback...');
           this.onPlayerFireballCallback(data);
         } else {
-          console.error('No fireball callback registered!');
+
         }
       } catch (error) {
-        console.error('Error processing fireball event:', error);
       }
     });
     
@@ -311,7 +287,6 @@ export class NetworkManager {
         return;
       }
       
-      console.log(`Received damage from player ${data.sourcePlayerId}: ${data.damage} damage, health now ${data.currentHealth}`);
       
       // Call the damage callback if registered
       if (this.onPlayerDamageCallback) {
@@ -326,7 +301,6 @@ export class NetworkManager {
       targetPlayerName: string,
       killerPlayerName: string
     }) => {
-      console.log(`Player ${data.killerPlayerName} killed player ${data.targetPlayerName}`);
       
       // Display kill notification for all players
       this.showKillNotification(data.killerPlayerName, data.targetPlayerName);
@@ -338,7 +312,6 @@ export class NetworkManager {
       health: number, 
       maxHealth: number 
     }) => {
-      console.log(`Received health update for player ${data.playerId}: ${data.health}/${data.maxHealth}`);
       
       // Update the stored health value for this player
       if (this.players.has(data.playerId)) {
@@ -360,7 +333,6 @@ export class NetworkManager {
       maxHealth: number,
       position: { x: number, y: number, z: number }
     }) => {
-      console.log(`Player respawned with health: ${data.health}/${data.maxHealth}`);
       
       // Call respawn callback if registered
       if (this.onPlayerRespawnCallback) {
@@ -376,7 +348,6 @@ export class NetworkManager {
     
     // Handle the validation response
     this.socket.on('players:validation', (serverPlayers: PlayerData[]) => {
-      console.log('Received player validation from server');
       
       // Get server player IDs
       const serverPlayerIds = serverPlayers.map(p => p.id);
@@ -388,7 +359,6 @@ export class NetworkManager {
       // Remove any stale players
       stalePlayerIds.forEach(id => {
         const stalePlayer = this.players.get(id);
-        console.log(`Removing stale player: ${stalePlayer?.name || 'Unknown'} (${id})`);
         this.players.delete(id);
         
         // Call the left callback for each stale player
@@ -400,22 +370,20 @@ export class NetworkManager {
       // Update our UI if any players were removed
       if (stalePlayerIds.length > 0) {
         this.updatePlayerListUI();
-        console.log(`Removed ${stalePlayerIds.length} stale players during validation`);
       }
     });
     
     // Handle player color change
     this.socket.on('player:colorChanged', (data: { id: string, dragonColor: DragonColorType }) => {
-      console.log(`Player color changed:`, data);
       
       // Update in players map
       if (this.players.has(data.id)) {
         const existingPlayer = this.players.get(data.id)!;
         existingPlayer.dragonColor = data.dragonColor;
         this.players.set(data.id, existingPlayer);
-        console.log(`Updated player color in map for: ${existingPlayer.name} (${data.id}) to ${data.dragonColor}`);
+
       } else {
-        console.log(`Warning: Received color change for unknown player: ${data.id}`);
+
       }
       
       // Call callback if set
@@ -449,11 +417,9 @@ export class NetworkManager {
       
       if (!this.isPageVisible) {
         // Page is now hidden, start sending periodic updates with last known position
-        console.log('Page hidden, starting inactive position updates');
         this.startInactivePositionUpdates();
       } else {
         // Page is visible again, stop the inactive update interval
-        console.log('Page visible, stopping inactive position updates');
         this.stopInactivePositionUpdates();
       }
     });
@@ -467,7 +433,6 @@ export class NetworkManager {
     // Send updates less frequently to reduce server load (every 2 seconds)
     this.inactiveUpdateInterval = window.setInterval(() => {
       if (this.socket.connected && this.playerId) {
-        console.log('Sending position update while page is inactive');
         this.socket.emit('player:position', {
           position: { 
             x: this.lastKnownPosition.x, 
@@ -564,9 +529,6 @@ export class NetworkManager {
   
   // Start sending position updates
   private startPositionUpdates() {
-    // We'll call this from main.ts with the dragon's actual position
-    // Make sure this method doesn't contain any unused blocking code
-    console.log('Position update system ready to receive updates from main game loop');
   }
   
   // Queue a message for batch sending
@@ -617,7 +579,6 @@ export class NetworkManager {
     // Send batch if we have messages
     if (this.messageQueue.length > 0) {
       if (this.messageQueue.length > 5) {
-        console.log(`Sending batch of ${this.messageQueue.length} messages`);
       }
       
       this.socket.emit('batch', this.messageQueue);
@@ -683,7 +644,6 @@ export class NetworkManager {
   // Set player name
   public setPlayerName(name: string) {
     if (!this.socket.connected) {
-      console.error('Cannot set player name: not connected to server');
       return;
     }
     
@@ -749,7 +709,6 @@ export class NetworkManager {
   private startHeartbeat() {
     this.heartbeatInterval = window.setInterval(() => {
       if (!this.socket.connected) {
-        console.log('Socket disconnected, attempting to reconnect...');
         this.connectionHealthy = false;
         
         // Force a reconnection attempt
@@ -764,7 +723,6 @@ export class NetworkManager {
         this.lastHeartbeatTime = Date.now();
         
         if (!this.connectionHealthy) {
-          console.log('Connection restored!');
           this.connectionHealthy = true;
           
           // If we have a position, immediately send it
@@ -791,7 +749,6 @@ export class NetworkManager {
   public sendFireball(position: THREE.Vector3, direction: THREE.Vector3, damage: number, radius: number) {
     try {
       if (!this.socket.connected || !this.playerId) {
-        console.error('Cannot send fireball: not connected to server');
         return;
       }
       
@@ -799,18 +756,15 @@ export class NetworkManager {
       if (isNaN(position.x) || isNaN(position.y) || isNaN(position.z) ||
           isNaN(direction.x) || isNaN(direction.y) || isNaN(direction.z) ||
           isNaN(damage) || isNaN(radius)) {
-        console.error('Invalid fireball data - contains NaN values');
         return;
       }
       
       // Make sure direction is normalized and not zero-length
       const normalizedDirection = direction.clone().normalize();
       if (normalizedDirection.length() < 0.1) {
-        console.error('Invalid fireball direction - near-zero length');
         return;
       }
       
-      console.log(`Sending fireball at position: ${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}`);
       
       // Create fireball data packet
       const fireballData = {
@@ -832,13 +786,11 @@ export class NetworkManager {
       // Queue for batch sending instead of immediate send
       this.queueMessage('player:fireball', fireballData);
     } catch (error) {
-      console.error('Error sending fireball:', error);
     }
   }
   
   // Register fireball callback
   public onPlayerFireball(callback: (fireball: FireballData) => void) {
-    console.log('Fireball callback registered');
     this.onPlayerFireballCallback = callback;
   }
   
@@ -846,7 +798,6 @@ export class NetworkManager {
   private onPlayerDamageCallback: ((data: { sourcePlayerId: string, targetPlayerId: string, damage: number, currentHealth: number }) => void) | null = null;
   
   public onPlayerDamage(callback: (data: { sourcePlayerId: string, targetPlayerId: string, damage: number, currentHealth: number }) => void) {
-    console.log('Player damage callback registered');
     this.onPlayerDamageCallback = callback;
   }
   
@@ -854,7 +805,6 @@ export class NetworkManager {
   private onPlayerHealthUpdatedCallback: ((playerId: string, health: number, maxHealth: number) => void) | null = null;
   
   public onPlayerHealthUpdated(callback: (playerId: string, health: number, maxHealth: number) => void) {
-    console.log('Player health update callback registered');
     this.onPlayerHealthUpdatedCallback = callback;
   }
   
@@ -862,18 +812,15 @@ export class NetworkManager {
   private onPlayerRespawnCallback: ((data: { health: number, maxHealth: number, position: { x: number, y: number, z: number } }) => void) | null = null;
   
   public onPlayerRespawn(callback: (data: { health: number, maxHealth: number, position: { x: number, y: number, z: number } }) => void) {
-    console.log('Player respawn callback registered');
     this.onPlayerRespawnCallback = callback;
   }
   
   // Modify sendPlayerDamage to use batching
   public sendPlayerDamage(targetPlayerId: string, damage: number, currentHealth: number) {
     if (!this.socket.connected || !this.playerId) {
-      console.error('Cannot send player damage: not connected to server');
       return;
     }
     
-    console.log(`Sending damage to player ${targetPlayerId}: ${damage} damage, health now ${currentHealth}`);
     
     // Queue message for batch sending
     this.queueMessage('player:damage', {
@@ -887,11 +834,9 @@ export class NetworkManager {
   // Modify sendPlayerKill to use batching
   public sendPlayerKill(targetPlayerId: string, targetPlayerName: string) {
     if (!this.socket.connected || !this.playerId) {
-      console.error('Cannot send player kill: not connected to server');
       return;
     }
     
-    console.log(`Sending kill notification: killed player ${targetPlayerName} (${targetPlayerId})`);
     
     // Queue message for batch sending
     this.queueMessage('player:kill', {
@@ -904,11 +849,9 @@ export class NetworkManager {
   // Modify sendHealthUpdate to use batching
   public sendHealthUpdate(health: number, maxHealth: number) {
     if (!this.socket.connected || !this.playerId) {
-      console.error('Cannot send health update: not connected to server');
       return;
     }
     
-    console.log(`Updating player health: ${health}/${maxHealth}`);
     
     // Queue message for batch sending
     this.queueMessage('player:healthUpdate', {
@@ -936,11 +879,9 @@ export class NetworkManager {
   
   public setDragonColor(dragonColor: DragonColorType) {
     if (!this.socket) {
-      console.error('Cannot set dragon color: socket not connected');
       return;
     }
     
-    console.log(`Setting dragon color to: ${dragonColor}`);
     this.socket.emit('player:setDragonColor', dragonColor);
   }
   

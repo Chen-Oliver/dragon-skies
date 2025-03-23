@@ -48,7 +48,6 @@ export class ExperienceOrbs {
     this.audioLoader.load('/sounds/collect.mp3', (buffer) => {
       this.collectSound = buffer;
     }, undefined, (error) => {
-      console.warn('Could not load orb collection sound:', error);
     });
     
     // Create initial orbs
@@ -384,8 +383,6 @@ export class ExperienceOrbs {
         // Play the sound once it's loaded
         this.playCollectSound(position);
       }, undefined, (error) => {
-        // If there's an error, just log it and continue without sound
-        console.warn('Could not load orb collection sound:', error);
       });
       return;
     }

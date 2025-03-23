@@ -38,9 +38,7 @@ export class Fireball {
     this.createTime = Date.now();
     this.isLocal = isLocal;
     
-    // Log fireball creation
-    console.log(`Creating ${isLocal ? 'local' : 'remote'} fireball at position: ${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}`);
-    
+
     // Create fireball mesh
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.copy(position);
@@ -104,8 +102,7 @@ export class Fireball {
       // Set render order to ensure visibility
       this.mesh.renderOrder = 1000;
       
-      // Log creation of remote fireball
-      console.log(`Remote fireball mesh created with radius ${radius}`);
+
     }
     
     // Add to scene
@@ -127,7 +124,6 @@ export class Fireball {
     
     // Validate position to prevent NaN values
     if (isNaN(this.position.x) || isNaN(this.position.y) || isNaN(this.position.z)) {
-      console.error('Fireball position contains NaN values, destroying fireball');
       this.isDead = true;
       return;
     }
@@ -257,8 +253,7 @@ export class FireballSystem {
   
   // Create a fireball from another player's data (received over network)
   createRemoteFireball(fireballData: FireballData) {
-    console.log(`Creating remote fireball at position: ${fireballData.position.x.toFixed(2)}, ${fireballData.position.y.toFixed(2)}, ${fireballData.position.z.toFixed(2)}`);
-    
+
     // Create Vector3 objects from the data
     const position = new THREE.Vector3(
       fireballData.position.x,
@@ -274,9 +269,6 @@ export class FireballSystem {
     
     // Ensure direction is normalized
     direction.normalize();
-    
-    console.log(`Remote fireball direction: ${direction.x.toFixed(2)}, ${direction.y.toFixed(2)}, ${direction.z.toFixed(2)}`);
-    console.log(`Creating remote fireball with damage: ${fireballData.damage}, radius: ${fireballData.radius}`);
     
     // Create distinct materials for remote fireballs
     const remoteMaterial = new THREE.MeshBasicMaterial({ 
@@ -308,7 +300,6 @@ export class FireballSystem {
     
     // Add to local tracking
     this.fireballs.push(fireball);
-    console.log(`Total fireballs in system: ${this.fireballs.length}`);
     return fireball;
   }
   
@@ -402,13 +393,6 @@ export class FireballSystem {
   }
   
   update(deltaTime: number) {
-    // Debug: Log active fireballs count regularly
-    if (Date.now() % 5000 < 50) {
-      console.log(`Active fireballs: ${this.fireballs.length}`);
-      this.fireballs.forEach((fireball, index) => {
-        console.log(`Fireball ${index}: pos=(${fireball.position.x.toFixed(1)},${fireball.position.y.toFixed(1)},${fireball.position.z.toFixed(1)}), isDead=${fireball.isDead}, isLocal=${fireball.isLocal}`);
-      });
-    }
     
     // Update all active fireballs
     for (let i = this.fireballs.length - 1; i >= 0; i--) {
@@ -416,7 +400,6 @@ export class FireballSystem {
       
       // Remove expired fireballs
       if (this.fireballs[i].isDead) {
-        console.log(`Removing dead fireball at index ${i}`);
         this.fireballs[i].cleanup();
         this.fireballs.splice(i, 1);
       }
@@ -505,21 +488,8 @@ export class FireballSystem {
           // Check distance
           const distance = fireball.position.distanceTo(dragonPosition);
           
-          // Log collision checks periodically for debugging
-          const now = Date.now();
-          if (now % 1000 < 50) {
-            console.log(`Checking fireball collision with player ${playerId}:`);
-            console.log(`  Fireball pos: ${fireball.position.x.toFixed(2)}, ${fireball.position.y.toFixed(2)}, ${fireball.position.z.toFixed(2)}`);
-            console.log(`  Dragon pos: ${dragonPosition.x.toFixed(2)}, ${dragonPosition.y.toFixed(2)}, ${dragonPosition.z.toFixed(2)}`);
-            console.log(`  Distance: ${distance.toFixed(2)} vs threshold: ${(fireball.radius + dragonRadius).toFixed(2)}`);
-          }
-          
           // If collision detected
           if (distance < (fireball.radius + dragonRadius)) {
-            // Handle hit on other player
-            console.log(`Fireball hit player ${playerId}!`);
-            console.log(`  Fireball damage: ${fireball.damage}, isLocal: ${fireball.isLocal}`);
-            console.log(`  Player current health: ${otherDragon.health || 100}`);
             
             // Apply damage based on the fireball's damage value
             const damage = fireball.damage || 25;
@@ -533,18 +503,15 @@ export class FireballSystem {
             
             // Update health on the other dragon
             otherDragon.health = updatedHealth;
-            console.log(`  Updated player health: ${updatedHealth}`);
             
             // Only send damage event for local fireballs (ones we shot)
             if (fireball.isLocal) {
               // Send damage event
-              console.log(`  Sending damage event to server: ${damage} damage to player ${playerId}`);
               networkManager.sendPlayerDamage(playerId, damage, updatedHealth);
               
               // Check if player was killed - but only if they weren't already dead
               if (updatedHealth <= 0 && !wasAlreadyDead && playerInfo.label) {
                 const killedPlayerName = playerInfo.label.textContent || 'Unknown Player';
-                console.log(`  Player ${killedPlayerName} was defeated!`);
                 networkManager.sendPlayerKill(playerId, killedPlayerName);
                 
                 // Award XP for defeating a player

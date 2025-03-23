@@ -38,9 +38,7 @@ export class Fireball {
     this.createTime = Date.now();
     this.isLocal = isLocal;
     
-    // Log fireball creation
-    console.log(`Creating ${isLocal ? 'local' : 'remote'} fireball at position: ${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}`);
-    
+
     // Create fireball mesh
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.copy(position);
@@ -148,8 +146,7 @@ export class Fireball {
       arrow.rotation.x = Math.PI / 2;  // Rotate to point along z-axis
       this.mesh.add(arrow);
       
-      // Log creation of remote fireball
-      console.log(`Remote fireball mesh created with radius ${radius}`);
+
     }
     
     // Add to scene
@@ -421,11 +418,9 @@ export class FireballSystem {
   
   // Create a fireball from another player's data (received over network)
   createRemoteFireball(fireballData: FireballData) {
-    console.log(`Creating remote fireball at position: ${fireballData.position.x.toFixed(2)}, ${fireballData.position.y.toFixed(2)}, ${fireballData.position.z.toFixed(2)}`);
-    
+
     // Validate fireball data
     if (!fireballData.position || !fireballData.direction || !fireballData.damage || !fireballData.radius) {
-      console.error('Invalid remote fireball data - missing required fields');
       return null;
     }
     
@@ -433,7 +428,6 @@ export class FireballSystem {
     if (isNaN(fireballData.position.x) || isNaN(fireballData.position.y) || isNaN(fireballData.position.z) ||
         isNaN(fireballData.direction.x) || isNaN(fireballData.direction.y) || isNaN(fireballData.direction.z) ||
         isNaN(fireballData.damage) || isNaN(fireballData.radius)) {
-      console.error('Invalid remote fireball data - contains NaN values');
       return null;
     }
     
@@ -452,15 +446,12 @@ export class FireballSystem {
     
     // Ensure direction is normalized
     if (direction.length() === 0) {
-      console.error('Remote fireball has zero-length direction vector');
       // Default to forward direction if invalid
       direction.set(0, 0, 1);
     }
     direction.normalize();
     
-    console.log(`Remote fireball direction: ${direction.x.toFixed(2)}, ${direction.y.toFixed(2)}, ${direction.z.toFixed(2)}`);
-    console.log(`Creating remote fireball with damage: ${fireballData.damage}, radius: ${fireballData.radius}`);
-    
+
     // Create distinct materials for remote fireballs - use brighter colors for visibility
     const remoteMaterial = new THREE.MeshBasicMaterial({ 
       color: 0x00ffff,  // Bright cyan
@@ -495,10 +486,8 @@ export class FireballSystem {
       
       // Add to local tracking
       this.fireballs.push(fireball);
-      console.log(`Total fireballs in system: ${this.fireballs.length}`);
       return fireball;
     } catch (error) {
-      console.error('Error creating remote fireball:', error);
       return null;
     }
   }
@@ -593,13 +582,6 @@ export class FireballSystem {
   }
   
   update(deltaTime: number) {
-    // Debug: Log active fireballs count regularly
-    if (Date.now() % 5000 < 50) {
-      console.log(`Active fireballs: ${this.fireballs.length}`);
-      this.fireballs.forEach((fireball, index) => {
-        console.log(`Fireball ${index}: pos=(${fireball.position.x.toFixed(1)},${fireball.position.y.toFixed(1)},${fireball.position.z.toFixed(1)}), isDead=${fireball.isDead}, isLocal=${fireball.isLocal}`);
-      });
-    }
     
     // Update all active fireballs
     for (let i = this.fireballs.length - 1; i >= 0; i--) {
@@ -607,7 +589,6 @@ export class FireballSystem {
       
       // Remove expired fireballs
       if (this.fireballs[i].isDead) {
-        console.log(`Removing dead fireball at index ${i}`);
         this.fireballs[i].cleanup();
         this.fireballs.splice(i, 1);
       }
@@ -701,8 +682,6 @@ export class FireballSystem {
           
           // If collision detected
           if (distance < (fireball.radius + dragonRadius)) {
-            // Handle hit on other player
-            console.log(`Fireball hit player ${playerId}!`);
             
             // Only local fireballs cause damage (prevent damage from other players' fireballs)
             if (fireball.isLocal) {
