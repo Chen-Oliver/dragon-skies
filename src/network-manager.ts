@@ -72,6 +72,12 @@ export class NetworkManager {
   private onServerStatusChangeCallback: ((isAvailable: boolean) => void) | null = null;
   private serverAvailable: boolean = false;
   
+  // Message batching properties
+  private messageQueue: {type: string, data: any}[] = [];
+  private batchInterval: number = 100; // 10 batches per second
+  private batchIntervalId: number | null = null;
+  private positionBatchQueue: {position: any, rotation: any, size: number} | null = null;
+  
   constructor(serverUrl: string = 'http://localhost:3000') {
     // Connect to the WebSocket server
     this.socket = socketIOClient(serverUrl);
@@ -90,6 +96,9 @@ export class NetworkManager {
     
     // Start heartbeat to monitor connection
     this.startHeartbeat();
+    
+    // Start batch message sending
+    this.startBatchSending();
   }
   
   private setupEventListeners() {
@@ -539,7 +548,63 @@ export class NetworkManager {
     console.log('Position update system ready to receive updates from main game loop');
   }
   
-  // Send position update to server
+  // Queue a message for batch sending
+  private queueMessage(type: string, data: any) {
+    // Don't queue if not connected
+    if (!this.socket.connected || !this.playerId) {
+      return;
+    }
+    
+    this.messageQueue.push({type, data});
+  }
+  
+  // Start the batch sending interval
+  private startBatchSending() {
+    // Clear any existing interval
+    this.stopBatchSending();
+    
+    // Set up the interval to send batched messages
+    this.batchIntervalId = window.setInterval(() => {
+      this.sendQueuedMessages();
+    }, this.batchInterval);
+  }
+  
+  // Stop the batch sending interval
+  private stopBatchSending() {
+    if (this.batchIntervalId !== null) {
+      window.clearInterval(this.batchIntervalId);
+      this.batchIntervalId = null;
+    }
+  }
+  
+  // Send all queued messages
+  private sendQueuedMessages() {
+    // Skip if not connected or no messages
+    if (!this.socket.connected || !this.playerId) {
+      return;
+    }
+    
+    // Process position update if queued
+    if (this.positionBatchQueue) {
+      this.messageQueue.push({
+        type: 'player:position', 
+        data: this.positionBatchQueue
+      });
+      this.positionBatchQueue = null;
+    }
+    
+    // Send batch if we have messages
+    if (this.messageQueue.length > 0) {
+      if (this.messageQueue.length > 5) {
+        console.log(`Sending batch of ${this.messageQueue.length} messages`);
+      }
+      
+      this.socket.emit('batch', this.messageQueue);
+      this.messageQueue = [];
+    }
+  }
+  
+  // Modify sendPositionUpdate to use batching
   public sendPositionUpdate(position: THREE.Vector3, rotation: THREE.Euler, size: number) {
     if (!this.socket.connected || !this.playerId) {
       return;
@@ -578,8 +643,8 @@ export class NetworkManager {
     this.lastSentRotation.copy(rotation);
     this.lastUpdateTime = now;
     
-    // Send the update
-    this.socket.emit('player:position', {
+    // Queue the position update for the next batch
+    this.positionBatchQueue = {
       position: { 
         x: position.x, 
         y: position.y, 
@@ -591,7 +656,7 @@ export class NetworkManager {
         z: rotation.z 
       },
       size: size
-    });
+    };
   }
   
   // Set player name
@@ -646,6 +711,9 @@ export class NetworkManager {
     // Stop the heartbeat interval
     this.stopHeartbeat();
     
+    // Stop the batch sending interval
+    this.stopBatchSending();
+    
     if (this.socket) {
       this.socket.disconnect();
     }
@@ -698,7 +766,7 @@ export class NetworkManager {
     }
   }
   
-  // Send fireball event to server
+  // Modify sendFireball to use batching
   public sendFireball(position: THREE.Vector3, direction: THREE.Vector3, damage: number, radius: number) {
     try {
       if (!this.socket.connected || !this.playerId) {
@@ -722,7 +790,6 @@ export class NetworkManager {
       }
       
       console.log(`Sending fireball at position: ${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}`);
-      console.log(`Fireball direction: ${normalizedDirection.x.toFixed(2)}, ${normalizedDirection.y.toFixed(2)}, ${normalizedDirection.z.toFixed(2)}`);
       
       // Create fireball data packet
       const fireballData = {
@@ -741,16 +808,8 @@ export class NetworkManager {
         radius: radius
       };
       
-      // Verify the data before sending
-      console.log(`Sending fireball with data:`, fireballData);
-      
-      // Send to server
-      this.socket.emit('player:fireball', fireballData);
-      
-      // Confirm the socket is connected and the message was queued
-      if (!this.socket.connected) {
-        console.error('Socket disconnected when sending fireball');
-      }
+      // Queue for batch sending instead of immediate send
+      this.queueMessage('player:fireball', fireballData);
     } catch (error) {
       console.error('Error sending fireball:', error);
     }
@@ -786,7 +845,7 @@ export class NetworkManager {
     this.onPlayerRespawnCallback = callback;
   }
   
-  // Send player damage event to server
+  // Modify sendPlayerDamage to use batching
   public sendPlayerDamage(targetPlayerId: string, damage: number, currentHealth: number) {
     if (!this.socket.connected || !this.playerId) {
       console.error('Cannot send player damage: not connected to server');
@@ -795,7 +854,8 @@ export class NetworkManager {
     
     console.log(`Sending damage to player ${targetPlayerId}: ${damage} damage, health now ${currentHealth}`);
     
-    this.socket.emit('player:damage', {
+    // Queue message for batch sending
+    this.queueMessage('player:damage', {
       sourcePlayerId: this.playerId,
       targetPlayerId: targetPlayerId,
       damage: damage,
@@ -803,7 +863,7 @@ export class NetworkManager {
     });
   }
   
-  // Send player kill event to server
+  // Modify sendPlayerKill to use batching
   public sendPlayerKill(targetPlayerId: string, targetPlayerName: string) {
     if (!this.socket.connected || !this.playerId) {
       console.error('Cannot send player kill: not connected to server');
@@ -812,14 +872,15 @@ export class NetworkManager {
     
     console.log(`Sending kill notification: killed player ${targetPlayerName} (${targetPlayerId})`);
     
-    this.socket.emit('player:kill', {
+    // Queue message for batch sending
+    this.queueMessage('player:kill', {
       killerPlayerId: this.playerId, 
       targetPlayerId: targetPlayerId,
       targetPlayerName: targetPlayerName
     });
   }
   
-  // Update player health
+  // Modify sendHealthUpdate to use batching
   public sendHealthUpdate(health: number, maxHealth: number) {
     if (!this.socket.connected || !this.playerId) {
       console.error('Cannot send health update: not connected to server');
@@ -828,7 +889,8 @@ export class NetworkManager {
     
     console.log(`Updating player health: ${health}/${maxHealth}`);
     
-    this.socket.emit('player:healthUpdate', {
+    // Queue message for batch sending
+    this.queueMessage('player:healthUpdate', {
       health: health,
       maxHealth: maxHealth
     });

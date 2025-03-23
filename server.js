@@ -156,187 +156,197 @@ io.on('connection', (socket) => {
     }
   });
   
-  // Handle player position updates
-  socket.on('player:position', (data) => {
-    const playerData = players.get(playerId);
-    if (playerData) {
-      // Add periodic logging of position (not every frame to avoid flooding logs)
-      const now = Date.now();
-      if (now % 3000 < 100) { // Log roughly every 3 seconds
-        console.log(`Position update for ${playerData.name} (${playerId}):`, {
-          position: data.position,
-          rotation: data.rotation,
-          size: data.size || 1
-        });
-      }
-      
-      // Update player data with new position
-      playerData.position = data.position;
-      playerData.rotation = data.rotation;
-      playerData.size = data.size || 1;
-      
-      // Only broadcast position updates if the player has set their name
-      if (playerData.name !== 'Unknown Player') {
-        // Create more compact position update with just the necessary data
-        const positionUpdate = {
-          id: playerId,
-          position: data.position,
-          rotation: data.rotation,
-          size: data.size || 1
-        };
-        
-        // Broadcast position to all other clients
-        // Using volatile emit for position updates (it's ok if some packets are dropped)
-        // This helps reduce network congestion with fast-moving objects
-        socket.volatile.broadcast.emit('player:position', positionUpdate);
-      }
+  // Handle batched messages
+  socket.on('batch', (messages) => {
+    if (!Array.isArray(messages)) {
+      console.error('Received invalid batch data - not an array');
+      return;
     }
-  });
-  
-  // Handle player fireball events
-  socket.on('player:fireball', (data) => {
-    const playerData = players.get(playerId);
-    if (playerData && playerData.name !== 'Unknown Player') {
-      // Add player ID to the fireball data so receivers know who shot it
-      const fireballData = {
-        ...data,
-        playerId: playerId
-      };
-      
-      // Log fireball events (just occasionally to avoid flooding logs)
-      const now = Date.now();
-      if (now % 5000 < 100) { // Log roughly every 5 seconds
-        console.log(`Fireball from ${playerData.name} (${playerId}) at position:`, fireballData.position);
-      }
-      
-      // Broadcast fireball to all OTHER clients (not including sender)
-      // The sender already showed their own fireball locally
-      socket.broadcast.emit('player:fireball', fireballData);
-    }
-  });
-  
-  // Handle player damage events
-  socket.on('player:damage', (data) => {
-    const sourcePlayerData = players.get(playerId);
-    const targetPlayerData = players.get(data.targetPlayerId);
     
-    if (sourcePlayerData && targetPlayerData && sourcePlayerData.name !== 'Unknown Player') {
-      // Skip damage processing if target player is already dead
-      if (targetPlayerData.health <= 0) {
-        console.log(`Ignoring damage on already defeated player ${targetPlayerData.name}`);
-        return;
+    // Process each message in the batch
+    for (const message of messages) {
+      if (!message || !message.type || !message.data) {
+        console.error('Received invalid message in batch', message);
+        continue;
       }
       
-      console.log(`Player ${sourcePlayerData.name} (${playerId}) damaged player ${targetPlayerData.name} (${data.targetPlayerId}) for ${data.damage} damage. Health now: ${data.currentHealth}`);
-      
-      // Update stored health value for target player
-      targetPlayerData.health = data.currentHealth;
-      
-      // Add source player name for better UI
-      const damageData = {
-        ...data,
-        sourcePlayerName: sourcePlayerData.name
-      };
-      
-      // Find the socket for the target player
-      const targetSocket = Array.from(io.sockets.sockets.values())
-        .find(s => s.id === targetPlayerData.socketId);
-      
-      if (targetSocket) {
-        // Send directly to the targeted player
-        targetSocket.emit('player:damage', damageData);
-      }
-      
-      // Also broadcast to all players to update their UI
-      io.emit('player:healthUpdate', {
-        playerId: data.targetPlayerId,
-        health: data.currentHealth,
-        maxHealth: targetPlayerData.maxHealth || 100
-      });
-    }
-  });
-  
-  // Handle player kill events
-  socket.on('player:kill', (data) => {
-    const killerPlayerData = players.get(playerId);
-    const targetPlayerData = players.get(data.targetPlayerId);
-    
-    if (killerPlayerData && killerPlayerData.name !== 'Unknown Player' && targetPlayerData) {
-      // Verify the target player is actually at 0 health to prevent false kill messages
-      if (targetPlayerData.health > 0) {
-        console.log(`Rejected kill event: ${data.targetPlayerName} has ${targetPlayerData.health} health remaining`);
-        return;
-      }
-      
-      console.log(`Player ${killerPlayerData.name} (${playerId}) killed player ${data.targetPlayerName} (${data.targetPlayerId})`);
-      
-      // Set a flag to prevent multiple kill messages
-      if (targetPlayerData.wasKilled) {
-        console.log(`Rejected duplicate kill event for player ${data.targetPlayerName}`);
-        return;
-      }
-      targetPlayerData.wasKilled = true;
-      
-      // Add killer name to the data
-      const killData = {
-        ...data,
-        killerPlayerName: killerPlayerData.name
-      };
-      
-      // Broadcast to all clients
-      io.emit('player:kill', killData);
-      
-      // Schedule respawn after a delay
-      setTimeout(() => {
-        if (players.has(data.targetPlayerId)) {
-          const respawningPlayer = players.get(data.targetPlayerId);
+      // Process based on message type
+      switch (message.type) {
+        case 'player:position':
+          // Handle position update
+          const posData = message.data;
+          const playerData = players.get(playerId);
           
-          // Reset health and position
-          respawningPlayer.health = respawningPlayer.maxHealth || 100;
-          respawningPlayer.position = { x: 0, y: 15, z: 0 };
-          respawningPlayer.wasKilled = false;
-          
-          console.log(`Player ${respawningPlayer.name} respawned with ${respawningPlayer.health} health`);
-          
-          // Find the socket for the target player
-          const targetSocket = Array.from(io.sockets.sockets.values())
-            .find(s => s.id === respawningPlayer.socketId);
+          if (playerData) {
+            // Update player data with new position
+            playerData.position = posData.position;
+            playerData.rotation = posData.rotation;
+            playerData.size = posData.size || 1;
             
-          if (targetSocket) {
-            // Send direct message to the respawned player
-            targetSocket.emit('player:respawn', {
-              health: respawningPlayer.health,
-              maxHealth: respawningPlayer.maxHealth,
-              position: respawningPlayer.position
+            // Only broadcast position updates if the player has set their name
+            if (playerData.name !== 'Unknown Player') {
+              // Create more compact position update with just the necessary data
+              const positionUpdate = {
+                id: playerId,
+                position: posData.position,
+                rotation: posData.rotation,
+                size: posData.size || 1
+              };
+              
+              // Broadcast position to all other clients
+              socket.volatile.broadcast.emit('player:position', positionUpdate);
+            }
+          }
+          break;
+          
+        case 'player:fireball':
+          // Handle fireball
+          const fireballData = message.data;
+          const fbPlayerData = players.get(playerId);
+          
+          if (fbPlayerData && fbPlayerData.name !== 'Unknown Player') {
+            // Add player ID to the fireball data so receivers know who shot it
+            const fireballPacket = {
+              ...fireballData,
+              playerId: playerId
+            };
+            
+            // Broadcast fireball to all OTHER clients
+            socket.broadcast.emit('player:fireball', fireballPacket);
+          }
+          break;
+          
+        case 'player:damage':
+          // Handle damage
+          const damageData = message.data;
+          const dmgSourcePlayerData = players.get(playerId);
+          const dmgTargetPlayerData = players.get(damageData.targetPlayerId);
+          
+          if (dmgSourcePlayerData && dmgTargetPlayerData && dmgSourcePlayerData.name !== 'Unknown Player') {
+            // Skip damage processing if target player is already dead
+            if (dmgTargetPlayerData.health <= 0) {
+              console.log(`Ignoring damage on already defeated player ${dmgTargetPlayerData.name}`);
+              continue;
+            }
+            
+            console.log(`Player ${dmgSourcePlayerData.name} damaged player ${dmgTargetPlayerData.name} for ${damageData.damage} damage. Health now: ${damageData.currentHealth}`);
+            
+            // Update stored health value for target player
+            dmgTargetPlayerData.health = damageData.currentHealth;
+            
+            // Add source player name for better UI
+            const damagePacket = {
+              ...damageData,
+              sourcePlayerName: dmgSourcePlayerData.name
+            };
+            
+            // Find the socket for the target player
+            const dmgTargetSocket = Array.from(io.sockets.sockets.values())
+              .find(s => s.id === dmgTargetPlayerData.socketId);
+            
+            if (dmgTargetSocket) {
+              // Send directly to the targeted player
+              dmgTargetSocket.emit('player:damage', damagePacket);
+            }
+            
+            // Also broadcast to all players to update their UI
+            io.emit('player:healthUpdate', {
+              playerId: damageData.targetPlayerId,
+              health: damageData.currentHealth,
+              maxHealth: dmgTargetPlayerData.maxHealth || 100
             });
           }
+          break;
           
-          // Broadcast health update to all players
-          io.emit('player:healthUpdate', {
-            playerId: data.targetPlayerId,
-            health: respawningPlayer.health,
-            maxHealth: respawningPlayer.maxHealth
-          });
-        }
-      }, 3000); // Respawn after 3 seconds
-    }
-  });
-  
-  // Handle health updates
-  socket.on('player:healthUpdate', (data) => {
-    const playerData = players.get(playerId);
-    
-    if (playerData) {
-      // Update stored health values
-      playerData.health = data.health;
-      playerData.maxHealth = data.maxHealth;
-      
-      // Broadcast to all other clients
-      socket.broadcast.emit('player:healthUpdate', {
-        playerId: playerId,
-        health: data.health,
-        maxHealth: data.maxHealth
-      });
+        case 'player:kill':
+          // Handle kill
+          const killData = message.data;
+          const killKillerPlayerData = players.get(playerId);
+          const killTargetPlayerData = players.get(killData.targetPlayerId);
+          
+          if (killKillerPlayerData && killTargetPlayerData && killKillerPlayerData.name !== 'Unknown Player') {
+            // Verify the target player is actually at 0 health to prevent false kill messages
+            if (killTargetPlayerData.health > 0) {
+              console.log(`Rejected kill event: ${killData.targetPlayerName} has ${killTargetPlayerData.health} health remaining`);
+              continue;
+            }
+            
+            console.log(`Player ${killKillerPlayerData.name} killed player ${killData.targetPlayerName}`);
+            
+            // Set a flag to prevent multiple kill messages
+            if (killTargetPlayerData.wasKilled) {
+              console.log(`Rejected duplicate kill event for player ${killData.targetPlayerName}`);
+              continue;
+            }
+            killTargetPlayerData.wasKilled = true;
+            
+            // Add killer name to the data
+            const killPacket = {
+              ...killData,
+              killerPlayerName: killKillerPlayerData.name
+            };
+            
+            // Broadcast to all clients
+            io.emit('player:kill', killPacket);
+            
+            // Schedule respawn after a delay
+            setTimeout(() => {
+              if (players.has(killData.targetPlayerId)) {
+                const respawningPlayer = players.get(killData.targetPlayerId);
+                
+                // Reset health and position
+                respawningPlayer.health = respawningPlayer.maxHealth || 100;
+                respawningPlayer.position = { x: 0, y: 15, z: 0 };
+                respawningPlayer.wasKilled = false;
+                
+                console.log(`Player ${respawningPlayer.name} respawned with ${respawningPlayer.health} health`);
+                
+                // Find the socket for the target player
+                const respawnTargetSocket = Array.from(io.sockets.sockets.values())
+                  .find(s => s.id === respawningPlayer.socketId);
+                  
+                if (respawnTargetSocket) {
+                  // Send direct message to the respawned player
+                  respawnTargetSocket.emit('player:respawn', {
+                    health: respawningPlayer.health,
+                    maxHealth: respawningPlayer.maxHealth,
+                    position: respawningPlayer.position
+                  });
+                }
+                
+                // Broadcast health update to all players
+                io.emit('player:healthUpdate', {
+                  playerId: killData.targetPlayerId,
+                  health: respawningPlayer.health,
+                  maxHealth: respawningPlayer.maxHealth
+                });
+              }
+            }, 3000); // Respawn after 3 seconds
+          }
+          break;
+          
+        case 'player:healthUpdate':
+          // Handle health update
+          const healthData = message.data;
+          const healthPlayerData = players.get(playerId);
+          
+          if (healthPlayerData) {
+            // Update stored health values
+            healthPlayerData.health = healthData.health;
+            healthPlayerData.maxHealth = healthData.maxHealth;
+            
+            // Broadcast to all other clients
+            socket.broadcast.emit('player:healthUpdate', {
+              playerId: playerId,
+              health: healthData.health,
+              maxHealth: healthData.maxHealth
+            });
+          }
+          break;
+          
+        default:
+          console.log(`Unknown message type in batch: ${message.type}`);
+      }
     }
   });
   
@@ -385,5 +395,6 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`🐉 Dragon Skies multiplayer server running on port ${PORT}`);
+  console.log(`Message batching enabled for improved network efficiency`);
   console.log(`Ready for players to connect!`);
 }); 
