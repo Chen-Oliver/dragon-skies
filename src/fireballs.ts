@@ -517,8 +517,6 @@ export class FireballSystem {
                 // Award XP for defeating a player
                 totalXP += 100;
               } else if (updatedHealth > 0) {
-                // Award a small amount of XP for damaging a player
-                totalXP += 5;
               }
             }
             

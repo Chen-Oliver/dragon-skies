@@ -2068,24 +2068,6 @@ window.addEventListener('keydown', (e) => {
         dragon.shootFireball();
       }
       break;
-    case 'k':
-      // Cheat code to kill player
-      if (dragon) {
-        handlePlayerDeath();
-      }
-      break;
-    case 'l':
-      // Cheat code to level up
-      if (levelSystem.getLevel() < 10) {
-        // Add enough XP to level up
-        const currentLevel = levelSystem.getLevel();
-        const currentXP = levelSystem.getExperience();
-        const nextLevelXP = LEVEL_THRESHOLDS[currentLevel];
-        const xpNeeded = nextLevelXP - currentXP + 1;
-        
-        levelSystem.addExperience(xpNeeded);
-      }
-      break;
   }
 });
 

@@ -9,6 +9,7 @@ export class HUD {
   private healthNumber: HTMLElement;
   private notificationElement: HTMLElement;
   private notificationTimeout: number | NodeJS.Timeout | undefined = undefined;
+  private controlsElement: HTMLElement;
 
   constructor() {
     // Create level display
@@ -86,6 +87,30 @@ export class HUD {
     this.notificationElement.style.opacity = '0';
     this.notificationElement.style.transition = 'opacity 0.3s ease-out';
     document.body.appendChild(this.notificationElement);
+    
+    // Create controls cheatsheet
+    this.controlsElement = document.createElement('div');
+    this.controlsElement.style.position = 'absolute';
+    this.controlsElement.style.bottom = '20px';
+    this.controlsElement.style.left = '20px';
+    this.controlsElement.style.background = 'rgba(0, 0, 0, 0.7)';
+    this.controlsElement.style.color = '#ffffff';
+    this.controlsElement.style.padding = '10px 15px';
+    this.controlsElement.style.borderRadius = '5px';
+    this.controlsElement.style.fontFamily = 'monospace';
+    this.controlsElement.style.fontSize = '14px';
+    this.controlsElement.style.zIndex = '1000';
+    this.controlsElement.style.textAlign = 'left';
+    this.controlsElement.style.lineHeight = '1.5';
+    this.controlsElement.innerHTML = `
+      <div style="font-weight: bold; margin-bottom: 5px; text-align: center;">CONTROLS</div>
+      <div><span style="color: #ffd700">W</span> - Fly Up</div>
+      <div><span style="color: #ffd700">A</span> - Turn Left</div>
+      <div><span style="color: #ffd700">S</span> - Fly Down</div>
+      <div><span style="color: #ffd700">D</span> - Turn Right</div>
+      <div><span style="color: #ffd700">SPACE</span> - Shoot Fireball</div>
+    `;
+    document.body.appendChild(this.controlsElement);
   }
 
   /**
