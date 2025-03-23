@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HUD } from './hud';
 import { notificationSystem } from './notification-system';
+import { NetworkManager } from './network-manager';
 
 // Level thresholds for XP - with gentler scaling for easier progression
 export const LEVEL_THRESHOLDS = [
@@ -29,6 +30,7 @@ export interface LevelStats {
 export class LevelSystem {
   private scene: THREE.Scene;
   private hud: HUD;
+  private networkManager: NetworkManager | null = null;
   
   private totalExperience: number = 0;
   private level: number = 1;
@@ -37,13 +39,17 @@ export class LevelSystem {
   // Stats
   private stats: LevelStats;
   
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, networkManager?: NetworkManager) {
     this.scene = scene;
     this.hud = new HUD();
+    this.networkManager = networkManager || null;
     
     // Initialize stats
     this.stats = this.getStatsForLevel(this.level);
     this.updateHUD();
+    
+    // Update network manager with initial level
+    this.updateNetworkLevel();
   }
   
   /**
@@ -102,6 +108,9 @@ export class LevelSystem {
     // Update HUD
     this.updateHUD();
     
+    // Update network with new level
+    this.updateNetworkLevel();
+    
     // Make level number pulse for visual feedback
     this.hud.pulseLevel();
     
@@ -124,6 +133,15 @@ export class LevelSystem {
       notificationSystem.notifySystem(
         "Triple Fireball unlocked! You can now shoot 3 fireballs at once."
       );
+    }
+  }
+  
+  /**
+   * Update network manager with current level
+   */
+  private updateNetworkLevel(): void {
+    if (this.networkManager) {
+      this.networkManager.updateLocalPlayerLevel(this.level);
     }
   }
   

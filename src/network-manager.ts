@@ -13,6 +13,7 @@ export interface PlayerData {
   health?: number;
   maxHealth?: number;
   dragonColor?: DragonColorType;
+  level?: number;
 }
 
 export interface PlayerPositionData {
@@ -43,6 +44,7 @@ export class NetworkManager {
   private onPlayersInitialCallback: ((players: PlayerData[]) => void) | null = null;
   private onPlayerFireballCallback: ((fireball: FireballData) => void) | null = null;
   private onPlayerColorChangedCallback: ((playerId: string, dragonColor: DragonColorType) => void) | null = null;
+  private onPlayerLevelChangedCallback: ((player: PlayerData) => void) | null = null;
   
   // UI for player list
   private playerListUI: HTMLElement | null = null;
@@ -77,6 +79,7 @@ export class NetworkManager {
   private batchInterval: number = 100; // 10 batches per second
   private batchIntervalId: number | null = null;
   private positionBatchQueue: {position: any, rotation: any, size: number} | null = null;
+  private localPlayerLevel: number = 1; // Track the local player's level
   
   constructor(serverUrl: string = 'http://localhost:3000') {
     // Connect to the WebSocket server
@@ -420,6 +423,23 @@ export class NetworkManager {
         this.onPlayerColorChangedCallback(data.id, data.dragonColor);
       }
     });
+    
+    // Handle player level change
+    this.socket.on('player:level', (data: { id: string, level: number }) => {
+      if (this.players.has(data.id)) {
+        const player = this.players.get(data.id)!;
+        player.level = data.level;
+        this.players.set(data.id, player);
+        
+        // Update UI
+        this.updatePlayerListUI();
+        
+        // Call callback if set
+        if (this.onPlayerLevelChangedCallback) {
+          this.onPlayerLevelChangedCallback(player);
+        }
+      }
+    });
   }
   
   private setupVisibilityDetection() {
@@ -518,7 +538,7 @@ export class NetworkManager {
     // Add current player first (if we have an ID)
     if (this.playerId) {
       const playerItem = document.createElement('div');
-      playerItem.textContent = `👑 You`;
+      playerItem.textContent = `👑 You [Lvl ${this.localPlayerLevel}]`;
       playerItem.style.margin = '3px 0';
       list.appendChild(playerItem);
     }
@@ -526,7 +546,8 @@ export class NetworkManager {
     // Add other players
     this.players.forEach(player => {
       const playerItem = document.createElement('div');
-      playerItem.textContent = `🐉 ${player.name}`;
+      const level = player.level || 1; // Default to 1 if not set
+      playerItem.textContent = `🐉 ${player.name} [Lvl ${level}]`;
       playerItem.style.margin = '3px 0';
       list.appendChild(playerItem);
     });
@@ -925,5 +946,24 @@ export class NetworkManager {
   
   public onPlayerColorChanged(callback: (playerId: string, dragonColor: DragonColorType) => void) {
     this.onPlayerColorChangedCallback = callback;
+  }
+  
+  // Add a method to update the local player's level
+  public updateLocalPlayerLevel(level: number): void {
+    this.localPlayerLevel = level;
+    this.updatePlayerListUI();
+    
+    // Send the level update to other players - include id in the data
+    if (this.socket.connected && this.playerId) {
+      this.queueMessage('player:level', { 
+        id: this.playerId,
+        level 
+      });
+    }
+  }
+  
+  // Register callback for level changes
+  public onPlayerLevelChanged(callback: (player: PlayerData) => void): void {
+    this.onPlayerLevelChangedCallback = callback;
   }
 } 

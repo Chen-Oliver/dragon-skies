@@ -29,7 +29,8 @@ io.on('connection', (socket) => {
     size: 1,
     health: 100,
     maxHealth: 100,
-    dragonColor: "Orange" // Default orange dragon
+    dragonColor: "Orange", // Default orange dragon
+    level: 1
   });
   
   // Log connection
@@ -50,7 +51,8 @@ io.on('connection', (socket) => {
       size: data.size,
       health: data.health || 100,
       maxHealth: data.maxHealth || 100,
-      dragonColor: data.dragonColor || "Orange"
+      dragonColor: data.dragonColor || "Orange",
+      level: data.level
     }));
   
   if (existingPlayers.length > 0) {
@@ -107,7 +109,8 @@ io.on('connection', (socket) => {
           size: playerData.size,
           health: playerData.health,
           maxHealth: playerData.maxHealth,
-          dragonColor: playerData.dragonColor
+          dragonColor: playerData.dragonColor,
+          level: playerData.level
         });
         
         // Also send this player's health update to ensure all clients have current data
@@ -130,7 +133,8 @@ io.on('connection', (socket) => {
             size: data.size,
             health: data.health || 100,
             maxHealth: data.maxHealth || 100,
-            dragonColor: data.dragonColor || "Orange"
+            dragonColor: data.dragonColor || "Orange",
+            level: data.level
           }));
           
         if (existingNamedPlayers.length > 0) {
@@ -340,6 +344,25 @@ io.on('connection', (socket) => {
               playerId: playerId,
               health: healthData.health,
               maxHealth: healthData.maxHealth
+            });
+          }
+          break;
+          
+        case 'player:level':
+          // Handle level update
+          const levelData = message.data;
+          const levelPlayerData = players.get(playerId);
+          
+          if (levelPlayerData) {
+            // Update stored level value
+            levelPlayerData.level = levelData.level;
+            
+            console.log(`Player ${levelPlayerData.name} reached level ${levelData.level}`);
+            
+            // Broadcast to all clients
+            io.emit('player:level', {
+              id: playerId,
+              level: levelData.level
             });
           }
           break;

@@ -36,8 +36,11 @@ document.body.appendChild(renderer.domElement)
 // Initialize the game environment
 const environment = new Environment(scene);
 
+// Initialize network manager
+const networkManager = new NetworkManager();
+
 // Initialize the level system
-const levelSystem = new LevelSystem(scene);
+const levelSystem = new LevelSystem(scene, networkManager);
 
 // Initialize the fireball system and connect it to the level system
 const fireballSystem = new FireballSystem(scene);
@@ -54,9 +57,6 @@ let dragon: Dragon | null = null;
 
 // Keep track of other players' dragons
 const otherPlayerDragons: Map<string, { dragon: Dragon, label: HTMLElement, healthBarContainer: HTMLElement, healthBar: HTMLElement }> = new Map();
-
-// Initialize network manager
-const networkManager = new NetworkManager();
 
 // Connect fireball system to network manager
 // When local fireballs are created, send to network
@@ -321,7 +321,17 @@ networkManager.onPlayerPositionUpdated((player: PlayerData) => {
 networkManager.onPlayerNameChanged((player: PlayerData) => {
   const otherPlayer = otherPlayerDragons.get(player.id);
   if (otherPlayer) {
-    otherPlayer.label.textContent = player.name;
+    const playerLevel = player.level || 1;
+    otherPlayer.label.textContent = `${player.name} [Lvl ${playerLevel}]`;
+  }
+});
+
+// Handle player level changes
+networkManager.onPlayerLevelChanged((player: PlayerData) => {
+  const otherPlayer = otherPlayerDragons.get(player.id);
+  if (otherPlayer) {
+    const playerLevel = player.level || 1;
+    otherPlayer.label.textContent = `${player.name} [Lvl ${playerLevel}]`;
   }
 });
 
@@ -485,7 +495,8 @@ function createOtherPlayerDragon(player: PlayerData) {
     // Create username label
     const label = document.createElement('div');
     label.className = 'username-label';
-    label.textContent = player.name || 'Unknown Player'; // Ensure we use the provided name
+    const playerLevel = player.level || 1; // Default to level 1 if not provided
+    label.textContent = `${player.name || 'Unknown Player'} [Lvl ${playerLevel}]`; // Include level in the label
     label.style.position = 'absolute';
     label.style.color = '#FFFF00'; // Make other players' labels yellow to distinguish
     label.style.transform = 'translateX(-50%)';
