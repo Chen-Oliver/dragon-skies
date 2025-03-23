@@ -28,7 +28,7 @@ try {
 // Create Socket.IO instance with the server
 const io = new Server(server, {
   cors: {
-    origin: "*", // Allow connections from any origin (during development)
+    origin: "https://dragons.oliverchen.me",
     methods: ["GET", "POST"]
   }
 });
