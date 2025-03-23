@@ -353,7 +353,7 @@ export class FireballSystem {
       this.onFireballCreatedCallback(position, direction, damage, fireballRadius);
     }
     
-    // If we're at level 7 or higher and this is a local fireball, shoot multiple fireballs
+    // If we have multiple fireballs (level 5+), add side fireballs
     if (isLocal && fireballCount > 1) {
       // Create offset vectors perpendicular to the direction
       const offsetAmount = 0.7; // Distance between fireballs
@@ -362,43 +362,39 @@ export class FireballSystem {
       const upVector = new THREE.Vector3(0, 1, 0);
       const perpendicular = new THREE.Vector3().crossVectors(direction, upVector).normalize().multiplyScalar(offsetAmount);
       
-      // Create positions offset to the left and right
-      const leftPosition = position.clone().add(perpendicular);
-      const rightPosition = position.clone().sub(perpendicular);
+      // Calculate positions for side fireballs
+      const positions: THREE.Vector3[] = [];
       
-      // Fire the two offset fireballs
-      const leftFireball = new Fireball(
-        this.scene, 
-        leftPosition, 
-        direction, 
-        damage, 
-        fireballRadius,
-        this.geometry,
-        this.material,
-        this.glowGeometry,
-        this.glowMaterial,
-        isLocal
-      );
-      const rightFireball = new Fireball(
-        this.scene, 
-        rightPosition, 
-        direction, 
-        damage, 
-        fireballRadius,
-        this.geometry,
-        this.material,
-        this.glowGeometry,
-        this.glowMaterial,
-        isLocal
-      );
+      if (fireballCount === 2) {
+        // For 2 fireballs total, add just one side fireball
+        positions.push(position.clone().add(perpendicular));
+      } else if (fireballCount === 3) {
+        // For 3 fireballs total, add two side fireballs
+        positions.push(position.clone().add(perpendicular));
+        positions.push(position.clone().sub(perpendicular));
+      }
       
-      this.fireballs.push(leftFireball);
-      this.fireballs.push(rightFireball);
-      
-      // Notify about the side fireballs for network sync
-      if (this.onFireballCreatedCallback) {
-        this.onFireballCreatedCallback(leftPosition, direction, damage, fireballRadius);
-        this.onFireballCreatedCallback(rightPosition, direction, damage, fireballRadius);
+      // Create and add the side fireballs
+      for (const sidePosition of positions) {
+        const sideFireball = new Fireball(
+          this.scene, 
+          sidePosition, 
+          direction, 
+          damage, 
+          fireballRadius,
+          this.geometry,
+          this.material,
+          this.glowGeometry,
+          this.glowMaterial,
+          isLocal
+        );
+        
+        this.fireballs.push(sideFireball);
+        
+        // Notify about the side fireball for network sync
+        if (this.onFireballCreatedCallback) {
+          this.onFireballCreatedCallback(sidePosition, direction, damage, fireballRadius);
+        }
       }
     }
     

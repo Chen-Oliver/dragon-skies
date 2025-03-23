@@ -265,10 +265,20 @@ export class NotificationSystem {
     );
   }
   
-  public notifyLevelUp(playerName: string, level: number): void {
+  public notifyLevelUp(playerName: string, level: number, benefits?: string[]): void {
+    let message = `${playerName} reached level ${level}!`;
+    
+    // Add benefits information if provided
+    if (benefits && benefits.length > 0) {
+      message += '\n\nBenefits:';
+      benefits.forEach(benefit => {
+        message += `\n• ${benefit}`;
+      });
+    }
+    
     this.addNotification(
       NotificationType.LEVEL_UP,
-      `${playerName} reached level ${level}!`,
+      message,
       '#FFD700'
     );
   }

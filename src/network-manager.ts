@@ -478,7 +478,7 @@ export class NetworkManager {
     this.playerListUI = document.createElement('div');
     this.playerListUI.className = 'player-list';
     this.playerListUI.style.position = 'absolute';
-    this.playerListUI.style.top = '10px';
+    this.playerListUI.style.bottom = '10px';
     this.playerListUI.style.right = '10px';
     this.playerListUI.style.backgroundColor = 'rgba(0,0,0,0.5)';
     this.playerListUI.style.color = 'white';

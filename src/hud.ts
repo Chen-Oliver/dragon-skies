@@ -8,7 +8,7 @@ export class HUD {
   private healthFill: HTMLElement;
   private healthNumber: HTMLElement;
   private notificationElement: HTMLElement;
-  private notificationTimeout: number | undefined;
+  private notificationTimeout: number | NodeJS.Timeout | undefined = undefined;
 
   constructor() {
     // Create level display
@@ -332,6 +332,58 @@ export class HUD {
       // Remove transition after animation completes
       setTimeout(() => {
         this.levelElement.style.transition = '';
+      }, 300);
+    }, 800);
+  }
+
+  /**
+   * Show health increase notification
+   * @param amount The amount of health increase to show
+   */
+  public showHealthIncrease(amount: number): void {
+    // Create a small health increase indicator that appears near the health bar
+    const healthIncreaseIndicator = document.createElement('div');
+    healthIncreaseIndicator.textContent = `+${amount} HP`;
+    healthIncreaseIndicator.style.position = 'absolute';
+    healthIncreaseIndicator.style.top = '80px';
+    healthIncreaseIndicator.style.left = '230px'; // Position right of the health bar
+    healthIncreaseIndicator.style.color = '#66bb6a'; // Green color
+    healthIncreaseIndicator.style.fontSize = '18px';
+    healthIncreaseIndicator.style.fontWeight = 'bold';
+    healthIncreaseIndicator.style.textShadow = '0 0 5px rgba(0, 0, 0, 0.5)';
+    healthIncreaseIndicator.style.opacity = '0';
+    healthIncreaseIndicator.style.transform = 'translateY(0)';
+    healthIncreaseIndicator.style.transition = 'all 0.8s ease-out';
+    healthIncreaseIndicator.style.zIndex = '1001';
+    document.body.appendChild(healthIncreaseIndicator);
+    
+    // Animate the indicator
+    setTimeout(() => {
+      healthIncreaseIndicator.style.opacity = '1';
+      healthIncreaseIndicator.style.transform = 'translateY(-5px)';
+    }, 50);
+    
+    setTimeout(() => {
+      healthIncreaseIndicator.style.opacity = '0';
+      healthIncreaseIndicator.style.transform = 'translateY(-20px)';
+    }, 1800);
+    
+    setTimeout(() => {
+      document.body.removeChild(healthIncreaseIndicator);
+    }, 2600);
+    
+    // Make the health bar pulse
+    const originalBackground = this.healthFill.style.background;
+    this.healthFill.style.transition = 'background-color 0.3s ease-in-out';
+    this.healthFill.style.backgroundColor = '#4CAF50'; // Bright green
+    
+    // Return to normal after a short delay
+    setTimeout(() => {
+      this.healthFill.style.backgroundColor = originalBackground;
+      
+      // Remove transition after animation completes
+      setTimeout(() => {
+        this.healthFill.style.transition = 'width 0.3s ease-out';
       }, 300);
     }, 800);
   }

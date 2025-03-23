@@ -2,18 +2,18 @@ import * as THREE from 'three';
 import { HUD } from './hud';
 import { notificationSystem } from './notification-system';
 
-// Level thresholds for XP - scaling up more steeply
+// Level thresholds for XP - with gentler scaling for easier progression
 export const LEVEL_THRESHOLDS = [
   0,      // Level 1
-  200,    // Level 2
-  500,    // Level 3
-  1000,   // Level 4
-  2000,   // Level 5
-  3500,   // Level 6
-  5500,   // Level 7
-  8000,   // Level 8
-  11000,  // Level 9
-  15000   // Level 10
+  100,    // Level 2 (was 200)
+  300,    // Level 3 (was 500)
+  600,    // Level 4 (was 1000)
+  1000,   // Level 5 (was 2000)
+  1500,   // Level 6 (was 3500)
+  2200,   // Level 7 (was 5500)
+  3000,   // Level 8 (was 8000)
+  4000,   // Level 9 (was 11000)
+  5500    // Level 10 (was 15000)
 ];
 
 // Stats that scale with level
@@ -102,15 +102,29 @@ export class LevelSystem {
     // Update HUD
     this.updateHUD();
     
-    // Play level up sound
-    // Add a subtle level up indication
-    this.showLevelUpEffects();
+    // Make level number pulse for visual feedback
+    this.hud.pulseLevel();
     
-    // Use notification system for level up notification
+    // Get old stats to calculate health increase
+    const oldStats = this.getStatsForLevel(oldLevel);
+    
+    // Show health increase in the top left UI
+    const healthIncrease = newStats.maxHealth - oldStats.maxHealth;
+    this.hud.showHealthIncrease(healthIncrease);
+    
+    // Show level-up notification with the standard level up message
     notificationSystem.notifyLevelUp("You", newLevel);
     
-    // Show benefits
-    this.showLevelUpBenefits(oldLevel, newLevel);
+    // Show special fireball powerup notifications only at specific levels
+    if (newLevel === 5) {
+      notificationSystem.notifySystem(
+        "Double Fireball unlocked! You can now shoot 2 fireballs at once."
+      );
+    } else if (newLevel === 8) {
+      notificationSystem.notifySystem(
+        "Triple Fireball unlocked! You can now shoot 3 fireballs at once."
+      );
+    }
   }
   
   /**
@@ -118,12 +132,12 @@ export class LevelSystem {
    */
   public getStatsForLevel(level: number): LevelStats {
     return {
-      maxHealth: 100 + (level - 1) * 20,
-      currentHealth: 100 + (level - 1) * 20,
-      damage: 10 + (level - 1) * 2, // Reduced from 5 to 2 for more balanced progression
-      fireballCooldown: level === 1 ? 300 : Math.max(300 - (level - 1) * 30, 100),
-      fireballRadius: level === 1 ? 0.7 : 0.7 + (level - 1) * 0.05,
-      fireballCount: level >= 7 ? 3 : 1
+      maxHealth: 100 + (level - 1) * 15,  // Reduced from 20 to 15 per level
+      currentHealth: 100 + (level - 1) * 15, // Reduced from 20 to 15 per level
+      damage: 10 + (level - 1) * 1.5, // Reduced from 2 to 1.5 per level
+      fireballCooldown: level === 1 ? 300 : Math.max(300 - (level - 1) * 25, 120), // Slightly reduced cooldown bonus, increased min cooldown
+      fireballRadius: level === 1 ? 0.7 : 0.7 + (level - 1) * 0.04, // Reduced radius growth from 0.05 to 0.04
+      fireballCount: level >= 8 ? 3 : (level >= 5 ? 2 : 1) // Now get 2 fireballs at level 5, 3 at level 8 (instead of 3 at level 7)
     };
   }
   
@@ -181,42 +195,6 @@ export class LevelSystem {
     this.hud.updateHealthNumber(this.stats.currentHealth, this.stats.maxHealth);
   }
   
-  /**
-   * Show level up notification with benefits - disabled
-   */
-  private showLevelUpNotification() {
-    // Notifications disabled
-    // this.hud.showLevelUpNotification(this.level);
-    // 
-    // // Get new stats to display benefits
-    // const stats = this.getStatsForLevel(this.level);
-    // 
-    // // Show level-specific benefits
-    // let benefits = [];
-    // 
-    // // Always show increased health and damage
-    // benefits.push(`+20 Max Health (now ${stats.maxHealth})`);
-    // benefits.push(`+2 Damage (now ${stats.damage})`);
-    // 
-    // // Level-specific unlocks
-    // if (this.level === 7) {
-    //   benefits.push("NEW: Triple Fireball Attack Unlocked!");
-    // }
-    // 
-    // // Show reduced cooldown
-    // if (this.level > 1) {
-    //   benefits.push(`Fireball cooldown reduced to ${stats.fireballCooldown}ms`);
-    // }
-    // 
-    // // Show increased fireball size
-    // if (this.level > 1) {
-    //   benefits.push(`Fireball size increased to ${stats.fireballRadius.toFixed(2)}`);
-    // }
-    // 
-    // // Display benefits to player
-    // this.hud.showBenefits(benefits);
-  }
-  
   // Getters
   public getLevel(): number {
     return this.level;
@@ -228,44 +206,5 @@ export class LevelSystem {
   
   public getStats(): LevelStats {
     return { ...this.stats };
-  }
-
-  // Update the HUD text for level up benefits - disabled
-  showLevelUpBenefits(oldLevel: number, newLevel: number) {
-    // Disabled
-    // if (newLevel <= oldLevel) return;
-    // 
-    // // Get stats for previous and new level
-    // const oldStats = this.getStatsForLevel(oldLevel);
-    // const newStats = this.getStatsForLevel(newLevel);
-    // 
-    // // Calculate benefits
-    // const healthIncrease = newStats.maxHealth - oldStats.maxHealth;
-    // const damageIncrease = newStats.damage - oldStats.damage;
-    // const cooldownDecrease = oldStats.fireballCooldown - newStats.fireballCooldown;
-    // 
-    // // Build the benefits text
-    // let benefitsText = `LEVEL UP!\n`;
-    // benefitsText += `Health: +${healthIncrease}\n`;
-    // benefitsText += `Damage: +${damageIncrease}\n`;
-    // 
-    // if (cooldownDecrease > 0) {
-    //   benefitsText += `Fireball cooldown: -${cooldownDecrease}ms\n`;
-    // }
-    // 
-    // if (newStats.fireballCount > oldStats.fireballCount) {
-    //   benefitsText += `Triple Fireball unlocked!\n`;
-    // }
-    // 
-    // // Show the benefits
-    // this.hud.showLevelUpText(benefitsText);
-  }
-
-  // Add a new method for level up effects
-  private showLevelUpEffects(): void {
-    // Pulse the level display
-    this.hud.pulseLevel();
-    
-    // Add any other visual/audio effects for level up here
   }
 } 
