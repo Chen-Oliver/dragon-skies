@@ -15,7 +15,7 @@ export class HUD {
     // Create level display
     this.levelElement = document.createElement('div');
     this.levelElement.style.position = 'absolute';
-    this.levelElement.style.top = '20px';
+    this.levelElement.style.top = '50px';
     this.levelElement.style.left = '20px';
     this.levelElement.style.color = '#ffffff';
     this.levelElement.style.fontSize = '24px';
@@ -27,7 +27,7 @@ export class HUD {
     // Create XP bar
     this.xpBar = document.createElement('div');
     this.xpBar.style.position = 'absolute';
-    this.xpBar.style.top = '60px';
+    this.xpBar.style.top = '90px';
     this.xpBar.style.left = '20px';
     this.xpBar.style.width = '200px';
     this.xpBar.style.height = '10px';
@@ -47,7 +47,7 @@ export class HUD {
     // Create health bar
     this.healthBar = document.createElement('div');
     this.healthBar.style.position = 'absolute';
-    this.healthBar.style.top = '80px';
+    this.healthBar.style.top = '110px';
     this.healthBar.style.left = '20px';
     this.healthBar.style.width = '200px';
     this.healthBar.style.height = '10px';
@@ -67,7 +67,7 @@ export class HUD {
     // Create health number display
     this.healthNumber = document.createElement('div');
     this.healthNumber.style.position = 'absolute';
-    this.healthNumber.style.top = '100px';
+    this.healthNumber.style.top = '130px';
     this.healthNumber.style.left = '20px';
     this.healthNumber.style.color = '#ffffff';
     this.healthNumber.style.fontSize = '18px';
@@ -79,7 +79,7 @@ export class HUD {
     // Create XP notification element
     this.notificationElement = document.createElement('span');
     this.notificationElement.style.position = 'absolute';
-    this.notificationElement.style.top = '50px';
+    this.notificationElement.style.top = '80px';
     this.notificationElement.style.left = '230px';
     this.notificationElement.style.color = '#4db6ac';
     this.notificationElement.style.fontSize = '18px';
