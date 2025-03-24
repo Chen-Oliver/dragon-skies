@@ -6,15 +6,15 @@ import { NetworkManager } from './network-manager';
 // Level thresholds for XP - with gentler scaling for easier progression
 export const LEVEL_THRESHOLDS = [
   0,      // Level 1
-  100,    // Level 2 (was 200)
-  300,    // Level 3 (was 500)
-  600,    // Level 4 (was 1000)
-  1000,   // Level 5 (was 2000)
-  1500,   // Level 6 (was 3500)
-  2200,   // Level 7 (was 5500)
-  3000,   // Level 8 (was 8000)
-  4000,   // Level 9 (was 11000)
-  5500    // Level 10 (was 15000)
+  100,    // Level 2
+  200,    // Level 3
+  300,    // Level 4
+  500,   // Level 5
+  600,   // Level 6
+  800,   // Level 7
+  1000,   // Level 8
+  1200,   // Level 9
+  1500    // Level 10
 ];
 
 // Stats that scale with level
