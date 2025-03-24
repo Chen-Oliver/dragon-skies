@@ -82,7 +82,7 @@ networkManager.onPlayerDamage((data) => {
     levelSystem.takeDamage(data.damage);
     
     // Visual feedback
-    collisionFeedback.startCameraShake(0.15, 300);
+    collisionFeedback.startCameraShake(0.15, 300, 'collision');
     collisionFeedback.createCollisionParticles(dragon.body.position, 0xff0000);
     collisionFeedback.createDamageText(dragon.body.position, data.damage);
     
@@ -763,6 +763,7 @@ class CollisionFeedback {
     startTime: number;
     duration: number;
   }[];
+  shakeSource: string = ''; // Track the source of camera shake
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -829,12 +830,13 @@ class CollisionFeedback {
     return particles;
   }
   
-  startCameraShake(intensity: number = 0.1, duration: number = 300) {
+  startCameraShake(intensity: number = 0.1, duration: number = 300, source: string = '') {
     this.cameraShake.active = true;
     this.cameraShake.intensity = intensity;
     this.cameraShake.duration = duration;
     this.cameraShake.startTime = Date.now();
     this.cameraShake.originalPosition = camera.position.clone();
+    this.shakeSource = source;
   }
   
   updateParticles() {
@@ -958,6 +960,8 @@ class CollisionFeedback {
 }
 
 const collisionFeedback = new CollisionFeedback(scene);
+// Add a property to track the source of camera shake
+collisionFeedback.shakeSource = '';
 
 // Create the dragon character
 export class Dragon {
@@ -1529,7 +1533,7 @@ export class Dragon {
       if (now - this.lastCollisionTime > this.collisionCooldown) {
         // Create particles at the height limit
         collisionFeedback.createCollisionParticles(this.body.position, 0xffffff); // White particles for height limit
-        collisionFeedback.startCameraShake(0.03, 150); // Light shake
+        collisionFeedback.startCameraShake(0.03, 150, 'boundary'); // Light shake
         
         this.lastCollisionTime = now;
       }
@@ -1571,7 +1575,7 @@ export class Dragon {
         
         // Create particles and camera shake
         collisionFeedback.createCollisionParticles(collisionPoint, 0x6495ed); // Blue particles for boundary
-        collisionFeedback.startCameraShake(0.05, 200); // Lighter shake for boundary
+        collisionFeedback.startCameraShake(0.05, 200, 'boundary'); // Lighter shake for boundary
         
         this.lastCollisionTime = now;
       }
@@ -1908,7 +1912,7 @@ export class Dragon {
       
       // Use more subtle visual feedback
       collisionFeedback.createCollisionParticles(collisionPoint, 0xffcc00);
-      collisionFeedback.startCameraShake(0.02, 80); // Reduced from 0.03/100 to 0.02/80
+      collisionFeedback.startCameraShake(0.02, 80, 'orb-collection'); // Reduced from 0.03/100 to 0.02/80
       
       this.lastCollisionTime = now;
     }
@@ -1977,8 +1981,9 @@ export class Dragon {
         this.body.remove(flashLight);
       }, 100);
       
-      // Add camera shake
-      collisionFeedback.startCameraShake(0.03, 100);
+      // No camera shake when shooting fireballs
+      // If we were to use camera shake, we'd mark it as from a fireball:
+      // collisionFeedback.startCameraShake(0.03, 100, 'fireball');
     }
     
     return fireSuccess;
@@ -2062,11 +2067,7 @@ window.addEventListener('keydown', (e) => {
     case 'd': keys.d = true; break;
     case ' ': 
       keys.space = true; 
-      // Only fire immediately on initial press, continuous firing handled in animate loop
-      if (dragon && Date.now() - lastFireballTime > fireballSystem.cooldown) {
-        lastFireballTime = Date.now();
-        dragon.shootFireball();
-      }
+      // Remove immediate fire - will be handled in animation loop
       break;
   }
 });
@@ -2100,8 +2101,8 @@ const followCamera = () => {
   const cameraOffset = baseOffset.clone().applyQuaternion(dragon.body.quaternion);
   const targetCameraPos = dragPos.clone().add(cameraOffset);
   
-  // Add camera shake if active
-  if (collisionFeedback.cameraShake.active) {
+  // Add camera shake if active and not from fireball shooting
+  if (collisionFeedback.cameraShake.active && collisionFeedback.shakeSource !== 'fireball') {
     const shakeFactor = 1 - ((Date.now() - collisionFeedback.cameraShake.startTime) / 
                            collisionFeedback.cameraShake.duration);
     const shakeIntensity = collisionFeedback.cameraShake.intensity * shakeFactor;
