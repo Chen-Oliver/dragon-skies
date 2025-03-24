@@ -1470,9 +1470,10 @@ export class Dragon {
       const leftDirection = new THREE.Vector3(-1, 0, 0).applyQuaternion(this.body.quaternion);
       this.targetVelocity.add(leftDirection.multiplyScalar(currentSpeed * 0.7 * deltaTime * 120));
       
-      // Apply smooth yaw rotation (turning left) (scaled by deltaTime)
+      // Instead of directly adding rotation, set a target rotation and lerp towards it
       const turnRate = 0.015 * (1 + this.currentAcceleration * 0.3) * deltaTime * 120;
-      this.body.rotation.y += turnRate;
+      const targetYaw = this.body.rotation.y + turnRate * 5; // Increased from 3 to 5
+      this.body.rotation.y += (targetYaw - this.body.rotation.y) * 0.2; // Increased from 0.1 to 0.2
     }
     
     if (keys.d) {
@@ -1480,9 +1481,10 @@ export class Dragon {
       const rightDirection = new THREE.Vector3(1, 0, 0).applyQuaternion(this.body.quaternion);
       this.targetVelocity.add(rightDirection.multiplyScalar(currentSpeed * 0.7 * deltaTime * 120));
       
-      // Apply smooth yaw rotation (turning right) (scaled by deltaTime)
+      // Instead of directly adding rotation, set a target rotation and lerp towards it
       const turnRate = 0.015 * (1 + this.currentAcceleration * 0.3) * deltaTime * 120;
-      this.body.rotation.y -= turnRate;
+      const targetYaw = this.body.rotation.y - turnRate * 5; // Increased from 3 to 5
+      this.body.rotation.y += (targetYaw - this.body.rotation.y) * 0.2; // Increased from 0.1 to 0.2
     }
     
     // Smooth transition from current velocity to target velocity (this should NOT be scaled, it's a lerp factor)
