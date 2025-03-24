@@ -339,7 +339,7 @@ function createOtherPlayerDragon(player: PlayerData) {
       rotationLerpFactor: number = 0.1; // Controls how quickly to rotate to target rotation
       lastUpdateTime: number = Date.now();
       
-      // Add health property for other players
+      // Track player's health
       health: number = 100;
       maxHealth: number = 100;
       
@@ -375,7 +375,7 @@ function createOtherPlayerDragon(player: PlayerData) {
       }
       
       // Override update method to handle interpolation
-      update() {
+      update(deltaTime = 1/120) {
         const now = Date.now();
         const timeSinceLastUpdate = now - this.lastUpdateTime;
         
@@ -387,13 +387,17 @@ function createOtherPlayerDragon(player: PlayerData) {
           this.lastUpdateTime = now;
         } else {
           // Normal interpolation for smooth movement
+          // Adjust lerp factors based on deltaTime to maintain consistent interpolation speed
+          const adjustedPositionLerp = 1 - Math.pow(1 - this.positionLerpFactor, deltaTime * 120);
+          const adjustedRotationLerp = 1 - Math.pow(1 - this.rotationLerpFactor, deltaTime * 120);
+          
           // Interpolate position smoothly
-          this.body.position.lerp(this.targetPosition, this.positionLerpFactor);
+          this.body.position.lerp(this.targetPosition, adjustedPositionLerp);
           
           // Interpolate rotation smoothly - need to handle Euler rotation differently
-          this.body.rotation.x += (this.targetRotation.x - this.body.rotation.x) * this.rotationLerpFactor;
-          this.body.rotation.y += (this.targetRotation.y - this.body.rotation.y) * this.rotationLerpFactor;
-          this.body.rotation.z += (this.targetRotation.z - this.body.rotation.z) * this.rotationLerpFactor;
+          this.body.rotation.x += (this.targetRotation.x - this.body.rotation.x) * adjustedRotationLerp;
+          this.body.rotation.y += (this.targetRotation.y - this.body.rotation.y) * adjustedRotationLerp;
+          this.body.rotation.z += (this.targetRotation.z - this.body.rotation.z) * adjustedRotationLerp;
         }
         
         // Wing flapping animation
@@ -986,18 +990,15 @@ export class Dragon {
   collisionRadius: number;
   worldBoundary: number;
   
-  // Add collision feedback property
   lastCollisionTime: number;
   collisionCooldown: number;
   
-  // Add acceleration properties
   accelerationFactor: number;
   currentAcceleration: number;
   maxAcceleration: number;
   accelerationRate: number;
   decelerationRate: number;
   
-  // Add health tracking properties
   lastDamageTime: number = 0;
   
   constructor(size = 1) {
@@ -1431,7 +1432,7 @@ export class Dragon {
     this.body.add(createLeg(false, false));
   }
   
-  update() {
+  update(deltaTime = 1/120) {
     // Store current position before updating
     const previousPosition = this.body.position.clone();
     
@@ -1441,56 +1442,57 @@ export class Dragon {
     // Calculate target velocity based on inputs
     this.targetVelocity.copy(this.velocity);
     
-    // Apply mild gravity
-    this.targetVelocity.y -= this.gravityForce;
+    // Apply mild gravity (scaled by deltaTime)
+    this.targetVelocity.y -= this.gravityForce * deltaTime * 120;
     
-    // Apply constant forward motion in the direction the dragon is facing
+    // Apply constant forward motion in the direction the dragon is facing (scaled by deltaTime)
     const forwardDirection = new THREE.Vector3(0, 0, 1).applyQuaternion(this.body.quaternion);
-    this.targetVelocity.add(forwardDirection.multiplyScalar(this.forwardSpeed));
+    this.targetVelocity.add(forwardDirection.multiplyScalar(this.forwardSpeed * deltaTime * 120));
     
     // Get the current speed with acceleration applied
     const currentSpeed = this.speed * (1 + this.currentAcceleration);
     
-    // Control inputs modify target velocity with acceleration
+    // Control inputs modify target velocity with acceleration (scaled by deltaTime)
     if (keys.w) {
       // Add upward force in local up direction
       const upDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(this.body.quaternion);
-      this.targetVelocity.add(upDirection.multiplyScalar(currentSpeed * 1.2));
+      this.targetVelocity.add(upDirection.multiplyScalar(currentSpeed * 1.2 * deltaTime * 120));
     }
     
     if (keys.s) {
       // Add downward force in local down direction
       const downDirection = new THREE.Vector3(0, -1, 0).applyQuaternion(this.body.quaternion);
-      this.targetVelocity.add(downDirection.multiplyScalar(currentSpeed));
+      this.targetVelocity.add(downDirection.multiplyScalar(currentSpeed * deltaTime * 120));
     }
     
     if (keys.a) {
       // Add left force in local left direction
       const leftDirection = new THREE.Vector3(-1, 0, 0).applyQuaternion(this.body.quaternion);
-      this.targetVelocity.add(leftDirection.multiplyScalar(currentSpeed * 0.7));
+      this.targetVelocity.add(leftDirection.multiplyScalar(currentSpeed * 0.7 * deltaTime * 120));
       
-      // Apply smooth yaw rotation (turning left)
-      const turnRate = 0.015 * (1 + this.currentAcceleration * 0.3);
+      // Apply smooth yaw rotation (turning left) (scaled by deltaTime)
+      const turnRate = 0.015 * (1 + this.currentAcceleration * 0.3) * deltaTime * 120;
       this.body.rotation.y += turnRate;
     }
     
     if (keys.d) {
       // Add right force in local right direction
       const rightDirection = new THREE.Vector3(1, 0, 0).applyQuaternion(this.body.quaternion);
-      this.targetVelocity.add(rightDirection.multiplyScalar(currentSpeed * 0.7));
+      this.targetVelocity.add(rightDirection.multiplyScalar(currentSpeed * 0.7 * deltaTime * 120));
       
-      // Apply smooth yaw rotation (turning right)
-      const turnRate = 0.015 * (1 + this.currentAcceleration * 0.3);
+      // Apply smooth yaw rotation (turning right) (scaled by deltaTime)
+      const turnRate = 0.015 * (1 + this.currentAcceleration * 0.3) * deltaTime * 120;
       this.body.rotation.y -= turnRate;
     }
     
-    // Smooth transition from current velocity to target velocity
+    // Smooth transition from current velocity to target velocity (this should NOT be scaled, it's a lerp factor)
     this.velocity.lerp(this.targetVelocity, this.smoothingFactor);
     
-    // Apply damping (air resistance)
-    this.velocity.x *= 0.98; // Increased for smoother deceleration
-    this.velocity.y *= 0.98;
-    this.velocity.z *= 0.98;
+    // Apply damping (air resistance) (adjusted for deltaTime)
+    const dampingFactor = Math.pow(0.98, deltaTime * 120);
+    this.velocity.x *= dampingFactor;
+    this.velocity.y *= dampingFactor;
+    this.velocity.z *= dampingFactor;
     
     // Limit maximum velocity
     const horizontalVelocity = new THREE.Vector2(this.velocity.x, this.velocity.z);
@@ -1503,8 +1505,9 @@ export class Dragon {
     // Limit vertical velocity
     this.velocity.y = Math.max(Math.min(this.velocity.y, this.maxSpeed * 0.8), -this.maxSpeed * 0.7);
     
-    // Apply velocity
-    this.body.position.add(this.velocity);
+    // Apply velocity (scaled by deltaTime)
+    const scaledVelocity = this.velocity.clone().multiplyScalar(deltaTime * 120);
+    this.body.position.add(scaledVelocity);
     
     // Get terrain height at dragon's current position
     const terrainHeight = environment.getTerrainHeight(this.body.position.x, this.body.position.z);
@@ -2245,8 +2248,8 @@ function animate() {
       if (keys.a) dragon.targetVelocity.x -= moveSpeed;
       if (keys.d) dragon.targetVelocity.x += moveSpeed;
       
-      // Apply the movement to the dragon
-      dragon.update();
+      // Apply the movement to the dragon with deltaTime
+      dragon.update(deltaTime);
       
       // Update boundary visualization based on dragon position
       environment.updateBoundaryVisualization(dragon.body.position);
@@ -2285,8 +2288,8 @@ function animate() {
       return; // Skip rest of processing for this dragon
     }
     
-    // Call the update method to perform interpolation
-    otherPlayer.dragon.update();
+    // Call the update method to perform interpolation with deltaTime
+    otherPlayer.dragon.update(deltaTime);
     
     // Update label position
     const dragonScreenPos = new THREE.Vector3();
