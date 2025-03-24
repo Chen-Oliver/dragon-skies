@@ -8,6 +8,10 @@ import { StartScreen } from './start-screen'
 import { NetworkManager, PlayerData } from './network-manager'
 import { DragonColorType, DragonColors, DefaultDragonColor } from './dragon'
 import { notificationSystem } from './notification-system'
+import { PerformanceMonitor } from './performance-monitor'
+
+// Initialize performance monitor
+const performanceMonitor = new PerformanceMonitor();
 
 // Polyfill for requestAnimationFrame to ensure it continues in background
 // This will help maintain position updates even when tab isn't active
@@ -2198,6 +2202,9 @@ function handlePlayerDeath() {
 
 // Animation loop
 function animate() {
+  // Begin measuring performance for this frame
+  performanceMonitor.begin();
+  
   requestAnimationFramePolyfill(animate);
   
   // Calculate deltaTime for consistent animations regardless of frame rate
@@ -2349,8 +2356,11 @@ function animate() {
     levelSystem.addExperience(fireballXP);
   }
   
-  // Always render the scene
+  // Render the scene
   renderer.render(scene, camera);
+  
+  // End measuring performance for this frame
+  performanceMonitor.end();
 }
 
 // Handle window resize
