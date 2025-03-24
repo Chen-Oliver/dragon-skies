@@ -1974,11 +1974,14 @@ export class Dragon {
     
     if (fireSuccess) {
       
-      // Add a slight backward force when shooting
-      this.velocity.sub(cameraForward.clone().multiplyScalar(0.03));
+      // Reduce the backward force when shooting (from 0.03 to 0.01)
+      this.velocity.sub(cameraForward.clone().multiplyScalar(0.01));
       
-      // Add recoil effect (slight rotation)
-      this.body.rotation.x -= 0.08;
+      // Apply recoil more smoothly - instead of directly setting rotation, 
+      // use a target value and smooth interpolation
+      const currentRotX = this.body.rotation.x;
+      const targetRotX = currentRotX - 0.04; // Reduced from 0.08 to 0.04
+      this.body.rotation.x = currentRotX + (targetRotX - currentRotX) * 0.3;
       
       // Add flash of light at mouth position
       const flashLight = new THREE.PointLight(0xff4500, 3, 7); // Brighter flash
@@ -2092,6 +2095,12 @@ window.addEventListener('keyup', (e) => {
   }
 });
 
+// Smooth camera values
+let cameraSmoothing: {
+  rotationX: number;
+  rotationZ: number;
+} | null = null;
+
 // Follow camera
 const followCamera = () => {
   if (!dragon) return;
@@ -2102,9 +2111,23 @@ const followCamera = () => {
   // Base offset - higher and further back when level
   const baseOffset = new THREE.Vector3(0, 2, -5.5);
   
-  // Adjust camera based on dragon's pitch and roll
-  baseOffset.y -= dragon.body.rotation.x * 3; // Camera goes lower when dragon pitches up
-  baseOffset.x += dragon.body.rotation.z * 2; // Camera shifts sideways during banking
+  // Use smoothed rotation values for camera following
+  // This prevents jerky camera movements when dragon rotation changes suddenly (like during fireball shots)
+  // Store current camera orientation if not already tracking
+  if (!cameraSmoothing) {
+    cameraSmoothing = {
+      rotationX: dragon.body.rotation.x,
+      rotationZ: dragon.body.rotation.z,
+    };
+  }
+  
+  // Smoothly interpolate to the new rotation values
+  cameraSmoothing.rotationX += (dragon.body.rotation.x - cameraSmoothing.rotationX) * 0.1;
+  cameraSmoothing.rotationZ += (dragon.body.rotation.z - cameraSmoothing.rotationZ) * 0.1;
+  
+  // Adjust camera based on smoothed pitch and roll
+  baseOffset.y -= cameraSmoothing.rotationX * 3; // Camera goes lower when dragon pitches up
+  baseOffset.x += cameraSmoothing.rotationZ * 2; // Camera shifts sideways during banking
   
   // Apply dragon's rotation to the offset
   const cameraOffset = baseOffset.clone().applyQuaternion(dragon.body.quaternion);
@@ -2113,12 +2136,11 @@ const followCamera = () => {
   // Add camera shake if active and not from fireball shooting
   if (collisionFeedback.cameraShake.active && collisionFeedback.shakeSource !== 'fireball') {
     const shakeFactor = 1 - ((Date.now() - collisionFeedback.cameraShake.startTime) / 
-                           collisionFeedback.cameraShake.duration);
-    const shakeIntensity = collisionFeedback.cameraShake.intensity * shakeFactor;
-    
-    targetCameraPos.x += (Math.random() - 0.5) * shakeIntensity;
-    targetCameraPos.y += (Math.random() - 0.5) * shakeIntensity;
-    targetCameraPos.z += (Math.random() - 0.5) * shakeIntensity * 0.5;
+                             collisionFeedback.cameraShake.duration);
+    const shakeAmount = collisionFeedback.cameraShake.intensity * shakeFactor;
+    targetCameraPos.x += (Math.random() - 0.5) * shakeAmount;
+    targetCameraPos.y += (Math.random() - 0.5) * shakeAmount;
+    targetCameraPos.z += (Math.random() - 0.5) * shakeAmount;
   }
   
   // Smooth camera movement with faster initial lerp
