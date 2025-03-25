@@ -34,7 +34,7 @@ Dragon Skies is a web-based multiplayer game built with Three.js and TypeScript.
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/dragon-skies.git
+git clone https://github.com/Chen-Oliver/dragon-skies.git
 cd dragon-skies
 ```
 
