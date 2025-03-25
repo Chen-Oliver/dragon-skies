@@ -1,4 +1,4 @@
-# Dragon Skies
+# Dragon Skies 🐉☄️
 
 ![Dragon Skies - Baby Dragons in a Medieval Castle](dragon_skies.jpg)
 
