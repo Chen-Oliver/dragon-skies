@@ -1,4 +1,4 @@
-# Dragon Skies
+# Dragon Skies 🐉☄️
 
 A multiplayer 3D dragon flight combat game where you control a dragon that grows as you collect experience points and battle other players.
 
