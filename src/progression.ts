@@ -169,7 +169,7 @@ export class ProgressionSystem {
   // Calculate stats for a given level
   public getStatsForLevel(level: number): LevelStats {
     return {
-      maxHealth: 100 + (level - 1) * 20,
+      maxHealth: 100 + (level - 1) * 10,
       damage: 10 + (level - 1) * 5,
       size: 1 + (level - 1) * 0.1,
       fireballCooldown: Math.max(200, 380 - (level - 1) * 20)

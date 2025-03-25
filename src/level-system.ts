@@ -150,8 +150,8 @@ export class LevelSystem {
    */
   public getStatsForLevel(level: number): LevelStats {
     return {
-      maxHealth: 100 + (level - 1) * 15,  // Reduced from 20 to 15 per level
-      currentHealth: 100 + (level - 1) * 15, // Reduced from 20 to 15 per level
+      maxHealth: 100 + (level - 1) * 10,  // Reduced from 15 to 10 per level
+      currentHealth: 100 + (level - 1) * 10, // Reduced from 15 to 10 per level
       damage: 10 + (level - 1) * 1.5, // Reduced from 2 to 1.5 per level
       fireballCooldown: level === 1 ? 300 : Math.max(300 - (level - 1) * 25, 120), // Slightly reduced cooldown bonus, increased min cooldown
       fireballRadius: level === 1 ? 0.7 : 0.7 + (level - 1) * 0.04, // Reduced radius growth from 0.05 to 0.04
