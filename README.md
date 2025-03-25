@@ -1,5 +1,7 @@
 # Dragon Skies
 
+![Dragon Skies - Baby Dragons in a Medieval Castle](dragon_skies.jpg)
+
 A multiplayer 3D dragon flight combat game where you control a dragon that grows as you collect experience points and battle other players.
 
 ## Overview
