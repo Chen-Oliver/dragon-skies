@@ -9,6 +9,7 @@ import { NetworkManager, PlayerData } from './network-manager'
 import { DragonColorType, DragonColors, DefaultDragonColor } from './dragon'
 import { notificationSystem } from './notification-system'
 import { PerformanceMonitor } from './performance-monitor'
+import { CollisionFeedback } from './collision-feedback'
 
 // Initialize performance monitor
 const performanceMonitor = new PerformanceMonitor();
@@ -755,223 +756,11 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Create a collision feedback system
-class CollisionFeedback {
-  scene: THREE.Scene;
-  particles: THREE.Points[];
-  cameraShake: {
-    active: boolean;
-    intensity: number;
-    duration: number;
-    startTime: number;
-    originalPosition: THREE.Vector3;
-  };
-  damageTexts: {
-    element: HTMLElement;
-    position: THREE.Vector3;
-    startTime: number;
-    duration: number;
-  }[];
-  shakeSource: string = ''; // Track the source of camera shake
-  
-  constructor(scene: THREE.Scene) {
-    this.scene = scene;
-    this.particles = [];
-    this.damageTexts = [];
-    this.cameraShake = {
-      active: false,
-      intensity: 0,
-      duration: 0,
-      startTime: 0,
-      originalPosition: new THREE.Vector3()
-    };
-  }
-  
-  createCollisionParticles(position: THREE.Vector3, color: number = 0xffffff) {
-    // Create particles for collision
-    const particleCount = 15;
-    const particleGeometry = new THREE.BufferGeometry();
-    const particlePositions = new Float32Array(particleCount * 3);
-    const particleSizes = new Float32Array(particleCount);
-    
-    // Setup particles around collision point
-    for (let i = 0; i < particleCount; i++) {
-      // Random position within a small radius
-      const offset = new THREE.Vector3(
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2
-      ).normalize().multiplyScalar(Math.random() * 2);
-      
-      const pos = position.clone().add(offset);
-      
-      particlePositions[i * 3] = pos.x;
-      particlePositions[i * 3 + 1] = pos.y;
-      particlePositions[i * 3 + 2] = pos.z;
-      
-      // Random sizes
-      particleSizes[i] = Math.random() * 0.2 + 0.1;
-    }
-    
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-    particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
-    
-    const particleMaterial = new THREE.PointsMaterial({
-      color: color,
-      size: 0.2,
-      transparent: true,
-      opacity: 0.8,
-      sizeAttenuation: true
-    });
-    
-    const particles = new THREE.Points(particleGeometry, particleMaterial);
-    this.scene.add(particles);
-    this.particles.push(particles);
-    
-    // Remove particles after animation
-    setTimeout(() => {
-      this.scene.remove(particles);
-      this.particles = this.particles.filter(p => p !== particles);
-      particleGeometry.dispose();
-      particleMaterial.dispose();
-    }, 1000);
-    
-    return particles;
-  }
-  
-  startCameraShake(intensity: number = 0.1, duration: number = 300, source: string = '') {
-    this.cameraShake.active = true;
-    this.cameraShake.intensity = intensity;
-    this.cameraShake.duration = duration;
-    this.cameraShake.startTime = Date.now();
-    this.cameraShake.originalPosition = camera.position.clone();
-    this.shakeSource = source;
-  }
-  
-  updateParticles() {
-    // Animate existing particles
-    for (const particles of this.particles) {
-      const positions = particles.geometry.attributes.position.array;
-      
-      for (let i = 0; i < positions.length / 3; i++) {
-        // Move particles outward from collision point
-        const x = positions[i * 3];
-        const y = positions[i * 3 + 1];
-        const z = positions[i * 3 + 2];
-        
-        // Direction vector from center
-        const dir = new THREE.Vector3(x, y, z)
-          .sub(particles.position)
-          .normalize();
-        
-        // Move particle outward and slightly up
-        positions[i * 3] += dir.x * 0.05;
-        positions[i * 3 + 1] += dir.y * 0.05 + 0.02; // Add slight upward drift
-        positions[i * 3 + 2] += dir.z * 0.05;
-      }
-      
-      particles.geometry.attributes.position.needsUpdate = true;
-      
-      // Fade out
-      const material = particles.material as THREE.PointsMaterial;
-      material.opacity -= 0.02;
-    }
-  }
-  
-  updateCameraShake() {
-    if (!this.cameraShake.active) return;
-    
-    const elapsed = Date.now() - this.cameraShake.startTime;
-    
-    if (elapsed > this.cameraShake.duration) {
-      this.cameraShake.active = false;
-      return;
-    }
-    
-    // Reduce intensity over time
-    const remainingFactor = 1 - (elapsed / this.cameraShake.duration);
-    const currentIntensity = this.cameraShake.intensity * remainingFactor;
-    
-    // Apply random offset to camera
-    const offsetX = (Math.random() - 0.5) * currentIntensity;
-    const offsetY = (Math.random() - 0.5) * currentIntensity;
-    
-    // We'll modify the camera's target position in the followCamera function
-  }
-  
-  createDamageText(position: THREE.Vector3, damage: number) {
-    // Create a new HTML element for the damage text
-    const damageText = document.createElement('div');
-    damageText.className = 'damage-text';
-    damageText.textContent = `-${damage}`;
-    
-    // Add a slight randomness to the position to avoid overlapping
-    const offset = Math.random() * 1 - 0.5;
-    
-    // Position it at the 3D position
-    damageText.style.position = 'absolute';
-    damageText.style.color = '#ff3333';
-    damageText.style.fontWeight = 'bold';
-    damageText.style.fontSize = '24px';
-    damageText.style.textShadow = '0px 0px 3px #000000';
-    damageText.style.pointerEvents = 'none';
-    damageText.style.userSelect = 'none';
-    damageText.style.zIndex = '1000';
-    
-    // Add to document
-    document.body.appendChild(damageText);
-    
-    // Store for animation
-    this.damageTexts.push({
-      element: damageText,
-      position: new THREE.Vector3(position.x + offset, position.y + 2, position.z),
-      startTime: Date.now(),
-      duration: 1500
-    });
-  }
-  
-  updateDamageTexts() {
-    const now = Date.now();
-    
-    // Update position of damage texts
-    for (let i = this.damageTexts.length - 1; i >= 0; i--) {
-      const damageText = this.damageTexts[i];
-      const elapsed = now - damageText.startTime;
-      
-      // Remove if duration has passed
-      if (elapsed > damageText.duration) {
-        document.body.removeChild(damageText.element);
-        this.damageTexts.splice(i, 1);
-        continue;
-      }
-      
-      // Progress as a value from 0 to 1
-      const progress = elapsed / damageText.duration;
-      
-      // Move upward as it fades
-      damageText.position.y += 0.03;
-      
-      // Fade out
-      damageText.element.style.opacity = (1 - progress).toString();
-      
-      // Update screen position
-      const screenPosition = toScreenPosition(damageText.position, camera);
-      damageText.element.style.left = `${screenPosition.x}px`;
-      damageText.element.style.top = `${screenPosition.y}px`;
-    }
-  }
-  
-  update() {
-    this.updateParticles();
-    this.updateCameraShake();
-    this.updateDamageTexts();
-  }
-}
-
 const collisionFeedback = new CollisionFeedback(scene);
 // Add a property to track the source of camera shake
 collisionFeedback.shakeSource = '';
 
-// Create the dragon character
+// Consolidated Dragon class implementation - used throughout the application
 export class Dragon {
   dragonColor: DragonColorType;
   head: THREE.Object3D;
@@ -2249,7 +2038,7 @@ function animate() {
   
   // Update basic animations regardless of game state
   experienceOrbs.update();
-  collisionFeedback.update();
+  collisionFeedback.update(camera);
   
   // Update the debug display
   // updateDebugDisplay();
@@ -2383,6 +2172,9 @@ function animate() {
     levelSystem.addExperience(fireballXP);
   }
   
+  // Update collision feedback
+  collisionFeedback.update(camera);
+  
   // Render the scene
   renderer.render(scene, camera);
   
@@ -2413,20 +2205,6 @@ function startAnimation() {
 
 // Start the animation when the page loads
 startAnimation();
-
-// Helper function to convert 3D position to screen position
-function toScreenPosition(position: THREE.Vector3, camera: THREE.Camera) {
-  const vector = position.clone();
-  vector.project(camera);
-  
-  const widthHalf = window.innerWidth / 2;
-  const heightHalf = window.innerHeight / 2;
-  
-  return {
-    x: (vector.x * widthHalf) + widthHalf,
-    y: -(vector.y * heightHalf) + heightHalf
-  };
-}
 
 // Function to make a dragon flash red when taking damage
 function flashDragonRed(dragonObj: any) {

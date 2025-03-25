@@ -10,6 +10,13 @@ export class CollisionFeedback {
     startTime: number;
     originalPosition: THREE.Vector3;
   };
+  damageTexts: {
+    element: HTMLElement;
+    position: THREE.Vector3;
+    startTime: number;
+    duration: number;
+  }[] = [];
+  shakeSource: string = ''; // Track the source of camera shake
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -82,13 +89,16 @@ export class CollisionFeedback {
     
     this.scene.add(particleSystem);
     this.particles.push(particleSystem);
+    
+    return particleSystem;
   }
   
-  startCameraShake(intensity: number = 0.1, duration: number = 300) {
+  startCameraShake(intensity: number = 0.1, duration: number = 300, source: string = '') {
     this.cameraShake.active = true;
     this.cameraShake.intensity = intensity;
     this.cameraShake.duration = duration;
     this.cameraShake.startTime = Date.now();
+    this.shakeSource = source;
   }
   
   updateParticles() {
@@ -169,8 +179,82 @@ export class CollisionFeedback {
     camera.position.z = this.cameraShake.originalPosition.z + offsetZ;
   }
   
+  createDamageText(position: THREE.Vector3, damage: number) {
+    // Create a new HTML element for the damage text
+    const damageText = document.createElement('div');
+    damageText.className = 'damage-text';
+    damageText.textContent = `-${damage}`;
+    
+    // Add a slight randomness to the position to avoid overlapping
+    const offset = Math.random() * 1 - 0.5;
+    
+    // Position it at the 3D position
+    damageText.style.position = 'absolute';
+    damageText.style.color = '#ff3333';
+    damageText.style.fontWeight = 'bold';
+    damageText.style.fontSize = '24px';
+    damageText.style.textShadow = '0px 0px 3px #000000';
+    damageText.style.pointerEvents = 'none';
+    damageText.style.userSelect = 'none';
+    damageText.style.zIndex = '1000';
+    
+    // Add to document
+    document.body.appendChild(damageText);
+    
+    // Store for animation
+    this.damageTexts.push({
+      element: damageText,
+      position: new THREE.Vector3(position.x + offset, position.y + 2, position.z),
+      startTime: Date.now(),
+      duration: 1500
+    });
+  }
+  
+  updateDamageTexts(camera: THREE.Camera) {
+    const now = Date.now();
+    
+    // Update position of damage texts
+    for (let i = this.damageTexts.length - 1; i >= 0; i--) {
+      const damageText = this.damageTexts[i];
+      const elapsed = now - damageText.startTime;
+      
+      // Remove if duration has passed
+      if (elapsed > damageText.duration) {
+        document.body.removeChild(damageText.element);
+        this.damageTexts.splice(i, 1);
+        continue;
+      }
+      
+      // Progress as a value from 0 to 1
+      const progress = elapsed / damageText.duration;
+      
+      // Move upward as it fades
+      damageText.position.y += 0.03;
+      
+      // Fade out
+      damageText.element.style.opacity = (1 - progress).toString();
+      
+      // Update screen position
+      // We need to convert 3D position to screen position
+      const vector = damageText.position.clone();
+      vector.project(camera);
+      
+      const widthHalf = window.innerWidth / 2;
+      const heightHalf = window.innerHeight / 2;
+      
+      const screenPosition = {
+        x: (vector.x * widthHalf) + widthHalf,
+        y: -(vector.y * heightHalf) + heightHalf
+      };
+      
+      damageText.element.style.left = `${screenPosition.x}px`;
+      damageText.element.style.top = `${screenPosition.y}px`;
+    }
+  }
+  
   update(camera: THREE.Camera) {
     this.updateParticles();
     this.updateCameraShake(camera);
+    this.updateDamageTexts(camera);
   }
 } 
